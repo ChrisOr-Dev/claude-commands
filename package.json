@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Optimized custom commands for Claude Code",
   "bin": {
-    "claude-commands": "./bin/cli.sh"
+    "claude-commands": "./bin/cli.js"
   },
   "repository": {
     "type": "git",
