@@ -4,6 +4,8 @@
 
 A collection of optimized custom commands for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Install globally and use across all your projects.
 
+This is an open source project that collects useful Claude Code optimization techniques found across the internet, packages them into ready-to-use commands, and provides one-click installation. All credits go to the original authors.
+
 ---
 
 ## Installation

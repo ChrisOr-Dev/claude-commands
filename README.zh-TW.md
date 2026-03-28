@@ -4,6 +4,8 @@
 
 一組優化過的 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 自訂指令集合。全域安裝後可在所有專案中使用。
 
+這是一個開源項目，收集網路上實用的 Claude Code 優化技巧，整理為即用的指令，提供一鍵安裝。所有 credit 歸屬原作者。
+
 ---
 
 ## 安裝
