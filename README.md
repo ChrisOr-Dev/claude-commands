@@ -14,8 +14,9 @@ A collection of optimized custom commands for [Claude Code](https://docs.anthrop
 # Install all commands / 安裝全部指令
 npx claude-commands --all
 
-# Install a specific command / 安裝特定指令
+# Install specific command(s) / 安裝特定指令（可多選）
 npx claude-commands last-word
+npx claude-commands last-word context-doctor
 ```
 
 ### bunx (Bun)
@@ -24,8 +25,9 @@ npx claude-commands last-word
 # Install all commands / 安裝全部指令
 bunx claude-commands --all
 
-# Install a specific command / 安裝特定指令
+# Install specific command(s) / 安裝特定指令（可多選）
 bunx claude-commands last-word
+bunx claude-commands last-word context-doctor
 ```
 
 ### Homebrew
@@ -43,8 +45,9 @@ brew install claude-commands
 # Install all commands / 安裝全部指令
 curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --all --remote
 
-# Install a specific command / 安裝特定指令
+# Install specific command(s) / 安裝特定指令（可多選）
 curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote last-word
+curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote last-word context-doctor
 ```
 
 ### Git Clone / 手動安裝
@@ -63,6 +66,7 @@ chmod +x install.sh
 | Command | Description | Description (中文) | Credit |
 |---------|-------------|-------------------|--------|
 | [`/last-word`](./last-word/) | Session wrap-up & knowledge archival before clearing context | 清空 context 前的收尾歸檔工具 | Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
+| [`/context-doctor`](./context-doctor/) | Token usage analysis with optimization recommendations | Token 使用分析與優化建議 | Inspired by [u/RyanSeanPhillips](https://www.reddit.com/r/ClaudeAI/comments/1s5qove/) |
 
 ### Install Individual Commands / 分開安裝指令
 
@@ -93,6 +97,38 @@ Usage in Claude Code / 使用方式：
 ```
 
 [Read more / 詳細說明 →](./last-word/)
+
+</details>
+
+<details>
+<summary><strong>/context-doctor</strong> — Token usage analysis / Token 使用分析</summary>
+
+Analyze your Claude Code token usage and get optimization recommendations. Heavy analysis runs in standalone scripts (zero token cost).
+
+分析 Claude Code 的 token 使用情況並取得優化建議。重分析由獨立腳本執行（零 token 消耗）。
+
+```bash
+# npx
+npx claude-commands context-doctor
+
+# bunx
+bunx claude-commands context-doctor
+
+# curl
+curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote context-doctor
+
+# Manual / 手動
+mkdir -p ~/.claude/commands/context-doctor
+cp context-doctor/context-doctor.md ~/.claude/commands/context-doctor.md
+cp context-doctor/analyze.sh context-doctor/analyze-visual.py ~/.claude/commands/context-doctor/
+```
+
+Usage in Claude Code / 使用方式：
+```
+/context-doctor
+```
+
+[Read more / 詳細說明 →](./context-doctor/)
 
 </details>
 
@@ -135,15 +171,20 @@ claude-commands/
 ├── install.sh
 ├── uninstall.sh
 ├── bin/
-│   └── cli.sh
-└── last-word/
-    ├── last-word.md    ← command file (copied to ~/.claude/commands/)
-    └── README.md       ← detailed documentation
+│   └── cli.js
+├── last-word/
+│   ├── last-word.md         ← command file
+│   └── README.md
+└── context-doctor/
+    ├── context-doctor.md    ← command file
+    ├── analyze.sh           ← standalone analysis script
+    ├── analyze-visual.py    ← optional chart generator
+    └── README.md
 ```
 
-Each command lives in its own directory with its `.md` file and documentation. The installer copies only the `.md` files to your Claude Code commands directory.
+Each command lives in its own directory. The installer copies `.md` files to `~/.claude/commands/` and any extra scripts to a subdirectory.
 
-每個指令有自己的目錄，包含 `.md` 檔案和說明文件。安裝腳本只會複製 `.md` 檔案到 Claude Code 的指令目錄。
+每個指令有自己的目錄。安裝腳本會複製 `.md` 到 `~/.claude/commands/`，附屬腳本則複製到子目錄。
 
 ---
 

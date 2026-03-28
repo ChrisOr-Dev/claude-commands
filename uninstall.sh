@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-ALL_COMMANDS=("last-word")
+ALL_COMMANDS=("last-word" "context-doctor")
 
 usage() {
     echo "Usage: uninstall.sh [OPTIONS] [COMMAND_NAME...]"
@@ -37,6 +37,10 @@ uninstall_command() {
     fi
 
     rm "$target_file"
+    # Remove extras directory if exists
+    if [ -d "$TARGET_DIR/$cmd_name" ]; then
+        rm -rf "$TARGET_DIR/$cmd_name"
+    fi
     echo -e "${GREEN}[ OK ]${NC} $cmd_name — removed"
     return 0
 }

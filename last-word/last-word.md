@@ -1,102 +1,51 @@
-# /last-word — Session Wrap-Up & Knowledge Archival
+# /last-word — Session Wrap-Up
 
-You are performing a structured session wrap-up before the user clears context. Follow each step carefully and report results as you go.
+Structured session wrap-up before clearing context. Follow each step, report results as you go.
 
-## Step 1: Review the Conversation
+## Step 1: Review
 
-Scan the entire conversation and identify:
-- **Blockers**: Where did you get stuck? What caused it?
-- **Wins**: What approaches worked well and should be repeated?
-- **CLAUDE.md gaps**: Any rules or patterns that should have been in CLAUDE.md but weren't?
+Scan the conversation. Identify: blockers, wins, CLAUDE.md gaps. Brief summary.
 
-Output a brief summary of findings.
+## Step 2: Classify & Archive
 
-## Step 2: Classify & Archive Learnings
+For each learning, decide where it goes:
+- **Universal rule** → `~/.claude/CLAUDE.md`
+- **Project rule** → `{project_root}/CLAUDE.md`
+- **Temp state** → Memory (project-scoped)
+- **Design decision** → Design doc or memory
+- **Already tracked** → Do not save
 
-For each learning identified in Step 1, decide where it belongs using these criteria:
+Before writing, check for duplicates — update existing entries instead.
 
-| Type | Destination | Criteria |
-|------|-------------|----------|
-| Universal rule | `~/.claude/CLAUDE.md` | Applies across all projects (e.g., "always use integration tests") |
-| Project rule | `{project_root}/CLAUDE.md` or `{project_root}/.claude/CLAUDE.md` | Only relevant to current repo (e.g., "this repo uses pnpm not npm") |
-| Temporary state | Memory (project-scoped) | In-progress work, current status (e.g., "feature X is 60% done") |
-| Design decision | Design doc (if exists) or memory | Architecture choices with rationale (e.g., "chose approach A over B because...") |
-| Already tracked | **Do not save** | Already in git history, GitHub issues, or existing docs |
+## Step 3: Remaining Work
 
-**Rules:**
-- Before writing any new entry, check if a similar one already exists — update instead of duplicating
-- For CLAUDE.md entries, append to the appropriate section or create a new section if needed
-- For memory entries, use the project's memory system if available
+If unfinished work exists:
+1. Save progress to memory (what's done, what remains, branches, issues)
+2. Generate a starter prompt for next session in a code block
 
-Apply the classification and make the changes. Report what was saved and where.
+If all complete, say so and skip.
 
-## Step 3: Handle Remaining Work
+## Step 4: Sync Issues
 
-If there is unfinished work from this session:
-
-1. **Save to memory**: Record what was done, what remains, relevant branches, and issue numbers
-2. **Generate a starter prompt**: Create a ready-to-paste prompt for the next session that includes:
-   - What was accomplished
-   - What still needs to be done (with specific steps)
-   - Relevant file paths, branches, and issue numbers
-   - Any context the next session needs to know
-
-Output the starter prompt in a code block so the user can copy it.
-
-If all work is complete, skip this step and say so.
-
-## Step 4: Sync GitHub Issues
-
-Check if there are GitHub issues related to this session's work:
-- First check if `gh` CLI is available by running `which gh`
-- If available, run `gh issue list` to see open issues
-- Verify issue status matches actual progress
-- Suggest closing issues that were resolved, or updating ones that progressed
-
-If `gh` is not installed or no GitHub issues are relevant, skip this step.
+If `gh` CLI is available, run `gh issue list`. Verify status matches progress. Suggest closing resolved issues.
 
 ## Step 5: Clean Stale Content
 
-Scan for outdated or redundant content:
+Scan memory and CLAUDE.md. Remove: completed tasks, outdated entries, duplicates. Report changes.
 
-1. **Memory**: Read existing memory files. Remove entries that are:
-   - Completed tasks that are done
-   - Outdated information superseded by newer entries
-   - Duplicates of what's already in CLAUDE.md or docs
-2. **CLAUDE.md**: Check for:
-   - Rules that no longer apply
-   - Duplicate or conflicting entries
-   - Entries that should be moved to project-level CLAUDE.md (or vice versa)
+## Step 6: Uncommitted Changes
 
-Report what was cleaned up.
+Run `git status` and `git diff --stat`. Warn if uncommitted changes exist.
 
-## Step 6: Check Uncommitted Changes
-
-Run `git status` and `git diff --stat` to check for uncommitted work.
-
-- If there are uncommitted changes: **warn the user** and list the files. Ask if they want to commit before clearing.
-- If clean: report "No uncommitted changes."
-
-## Step 7: Final Summary & Confirmation
-
-Output a summary:
+## Step 7: Summary
 
 ```
 === Session Wrap-Up Complete ===
-
-Archived:
-- [list what was saved and where]
-
-Cleaned:
-- [list what was removed or merged]
-
-Starter Prompt:
-- [saved / not needed]
-
-Uncommitted Changes:
-- [none / list files]
-
+Archived: [what was saved and where]
+Cleaned: [what was removed]
+Starter Prompt: [saved / not needed]
+Uncommitted: [none / list files]
 Ready to /clear: [Yes / No — reason]
 ```
 
-Wait for user confirmation before they proceed with `/clear`.
+Wait for user confirmation before /clear.

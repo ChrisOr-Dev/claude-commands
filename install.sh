@@ -15,7 +15,13 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # All available commands (add new commands here)
-ALL_COMMANDS=("last-word")
+ALL_COMMANDS=("last-word" "context-doctor")
+
+# Commands that have extra files (scripts) in a subdirectory
+# Format: "command-name:file1,file2,..."
+COMMAND_EXTRAS=(
+    "context-doctor:analyze.sh,analyze-visual.py"
+)
 
 usage() {
     echo "Usage: install.sh [OPTIONS] [COMMAND_NAME...]"
@@ -37,6 +43,18 @@ usage() {
     echo "  ./install.sh --all --force      # Install all, overwrite existing"
 }
 
+get_extras() {
+    local cmd_name="$1"
+    for entry in "${COMMAND_EXTRAS[@]}"; do
+        local name="${entry%%:*}"
+        local files="${entry#*:}"
+        if [ "$name" = "$cmd_name" ]; then
+            echo "$files"
+            return
+        fi
+    done
+}
+
 install_command() {
     local cmd_name="$1"
     local force="$2"
@@ -44,7 +62,6 @@ install_command() {
     local source_file=""
 
     if [ "$remote" = "true" ]; then
-        # Download from GitHub
         source_file=$(mktemp)
         if ! curl -fsSL "$REPO_URL/$cmd_name/$cmd_name.md" -o "$source_file" 2>/dev/null; then
             echo -e "${RED}[FAIL]${NC} $cmd_name — could not download from GitHub"
@@ -52,7 +69,6 @@ install_command() {
             return 1
         fi
     else
-        # Local install
         source_file="$SCRIPT_DIR/$cmd_name/$cmd_name.md"
         if [ ! -f "$source_file" ]; then
             echo -e "${RED}[FAIL]${NC} $cmd_name — source file not found: $source_file"
@@ -62,7 +78,6 @@ install_command() {
 
     local target_file="$TARGET_DIR/$cmd_name.md"
 
-    # Check if already exists
     if [ -f "$target_file" ] && [ "$force" != "true" ]; then
         echo -e "${YELLOW}[SKIP]${NC} $cmd_name — already exists (use --force to overwrite)"
         [ "$remote" = "true" ] && rm -f "$source_file"
@@ -70,9 +85,40 @@ install_command() {
     fi
 
     cp "$source_file" "$target_file"
-    echo -e "${GREEN}[ OK ]${NC} $cmd_name — installed to $target_file"
-
+    echo -e "${GREEN}[ OK ]${NC} $cmd_name.md → $target_file"
     [ "$remote" = "true" ] && rm -f "$source_file"
+
+    # Install extra files (scripts) into subdirectory
+    local extras
+    extras=$(get_extras "$cmd_name")
+    if [ -n "$extras" ]; then
+        local extras_dir="$TARGET_DIR/$cmd_name"
+        mkdir -p "$extras_dir"
+
+        IFS=',' read -ra FILES <<< "$extras"
+        for file in "${FILES[@]}"; do
+            if [ "$remote" = "true" ]; then
+                local tmp_extra
+                tmp_extra=$(mktemp)
+                if curl -fsSL "$REPO_URL/$cmd_name/$file" -o "$tmp_extra" 2>/dev/null; then
+                    cp "$tmp_extra" "$extras_dir/$file"
+                    chmod +x "$extras_dir/$file" 2>/dev/null || true
+                    echo -e "${GREEN}[ OK ]${NC}   $file → $extras_dir/$file"
+                else
+                    echo -e "${YELLOW}[WARN]${NC}   $file — could not download (optional)"
+                fi
+                rm -f "$tmp_extra"
+            else
+                local src="$SCRIPT_DIR/$cmd_name/$file"
+                if [ -f "$src" ]; then
+                    cp "$src" "$extras_dir/$file"
+                    chmod +x "$extras_dir/$file" 2>/dev/null || true
+                    echo -e "${GREEN}[ OK ]${NC}   $file → $extras_dir/$file"
+                fi
+            fi
+        done
+    fi
+
     return 0
 }
 
@@ -112,7 +158,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Determine what to install
 if [ "$INSTALL_ALL" = "true" ]; then
     COMMANDS=("${ALL_COMMANDS[@]}")
 elif [ ${#COMMANDS[@]} -eq 0 ]; then
@@ -127,13 +172,11 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/install.sh" ]; then
     REMOTE="true"
 fi
 
-# Ensure target directory exists
 mkdir -p "$TARGET_DIR"
 
 echo "Installing Claude commands to $TARGET_DIR ..."
 echo ""
 
-# Install each command
 SUCCESS=0
 FAIL=0
 for cmd in "${COMMANDS[@]}"; do
