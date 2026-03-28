@@ -120,4 +120,6 @@ In Claude Code, type:
 
 ## Credits
 
-Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen)'s session wrap-up workflow.
+Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen)'s session wrap-up workflow shared on [Threads](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3).
+
+靈感來自 [@chan_yu_chen](https://www.threads.com/@chan_yu_chen) 在 [Threads](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) 分享的 session 收尾工作流程。
