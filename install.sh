@@ -123,7 +123,7 @@ elif [ ${#COMMANDS[@]} -eq 0 ]; then
 fi
 
 # If running via curl pipe, force remote mode
-if [ ! -d "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/install.sh" ]; then
+if [ -z "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/install.sh" ]; then
     REMOTE="true"
 fi
 
@@ -138,9 +138,9 @@ SUCCESS=0
 FAIL=0
 for cmd in "${COMMANDS[@]}"; do
     if install_command "$cmd" "$FORCE" "$REMOTE"; then
-        ((SUCCESS++))
+        SUCCESS=$((SUCCESS + 1))
     else
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 done
 

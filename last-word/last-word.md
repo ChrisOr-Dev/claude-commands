@@ -48,11 +48,12 @@ If all work is complete, skip this step and say so.
 ## Step 4: Sync GitHub Issues
 
 Check if there are GitHub issues related to this session's work:
-- Run `gh issue list` to see open issues
+- First check if `gh` CLI is available by running `which gh`
+- If available, run `gh issue list` to see open issues
 - Verify issue status matches actual progress
 - Suggest closing issues that were resolved, or updating ones that progressed
 
-If no GitHub issues are relevant, skip this step.
+If `gh` is not installed or no GitHub issues are relevant, skip this step.
 
 ## Step 5: Clean Stale Content
 
