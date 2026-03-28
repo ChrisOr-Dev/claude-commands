@@ -101,5 +101,5 @@ In Claude Code, type:
 
 ## Credits
 
-- [u/RyanSeanPhillips](https://www.reddit.com/r/ClaudeAI/comments/1s5qove/) — 1M context token burn analysis
+- [RyanSeanPhillips](https://github.com/RyanSeanPhillips) — 1M context token burn analysis
 - [cldctrl](https://github.com/RyanSeanPhillips/cldctrl) — context_analysis.py

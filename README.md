@@ -66,7 +66,7 @@ chmod +x install.sh
 | Command | Description | Description (中文) | Credit |
 |---------|-------------|-------------------|--------|
 | [`/last-word`](./last-word/) | Session wrap-up & knowledge archival before clearing context | 清空 context 前的收尾歸檔工具 | Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
-| [`/context-doctor`](./context-doctor/) | Token usage analysis with optimization recommendations | Token 使用分析與優化建議 | Inspired by [u/RyanSeanPhillips](https://www.reddit.com/r/ClaudeAI/comments/1s5qove/) |
+| [`/context-doctor`](./context-doctor/) | Token usage analysis with optimization recommendations | Token 使用分析與優化建議 | Inspired by [RyanSeanPhillips](https://github.com/RyanSeanPhillips) |
 
 ### Install Individual Commands / 分開安裝指令
 
