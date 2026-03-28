@@ -60,9 +60,9 @@ chmod +x install.sh
 
 ## Available Commands / 可用指令
 
-| Command | Description | Description (中文) |
-|---------|-------------|-------------------|
-| [`/last-word`](./last-word/) | Session wrap-up & knowledge archival before clearing context | 清空 context 前的收尾歸檔工具 |
+| Command | Description | Description (中文) | Credit |
+|---------|-------------|-------------------|--------|
+| [`/last-word`](./last-word/) | Session wrap-up & knowledge archival before clearing context | 清空 context 前的收尾歸檔工具 | Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
 
 ### Install Individual Commands / 分開安裝指令
 
