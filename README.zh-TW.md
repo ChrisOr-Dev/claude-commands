@@ -67,6 +67,7 @@ chmod +x install.sh
 |------|------|--------|
 | [`/last-word`](./last-word/) | 清空 context 前的收尾歸檔工具 | 靈感來自 [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
 | [`/context-doctor`](./context-doctor/) | Token 使用分析與優化建議 | 靈感來自 [RyanSeanPhillips](https://github.com/RyanSeanPhillips) |
+| [`/ping-claude`](./ping-claude/) | 每日 session 暖機排程，避免 5 小時 rate limit | 靈感來自 [@maigo.tom](https://www.threads.com/@maigo.tom) |
 
 ### 分開安裝指令
 
@@ -107,6 +108,27 @@ cp context-doctor/analyze.sh context-doctor/analyze-visual.py ~/.claude/commands
 在 Claude Code 中使用：`/context-doctor`
 
 [詳細說明 →](./context-doctor/)
+
+</details>
+
+<details>
+<summary><strong>/ping-claude</strong> — 每日 session 暖機排程器</summary>
+
+每天自動在 09:00、14:00、19:00 對 Claude Code 發送 ping，提前啟動 session 計時器，避免在尖峰時段觸碰 5 小時 rate limit。
+
+```bash
+npx claude-commands ping-claude
+# 或
+curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote ping-claude
+# 或手動
+mkdir -p ~/.claude/commands/ping-claude
+cp ping-claude/ping-claude.md ~/.claude/commands/ping-claude.md
+cp ping-claude/setup.sh ~/.claude/commands/ping-claude/
+```
+
+在 Claude Code 中使用：`/ping-claude`
+
+[詳細說明 →](./ping-claude/)
 
 </details>
 

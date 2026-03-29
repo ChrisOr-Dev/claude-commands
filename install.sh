@@ -15,12 +15,13 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # All available commands (add new commands here)
-ALL_COMMANDS=("last-word" "context-doctor")
+ALL_COMMANDS=("last-word" "context-doctor" "ping-claude")
 
 # Commands that have extra files (scripts) in a subdirectory
 # Format: "command-name:file1,file2,..."
 COMMAND_EXTRAS=(
     "context-doctor:analyze.sh,analyze-visual.py"
+    "ping-claude:setup.sh"
 )
 
 usage() {

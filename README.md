@@ -67,6 +67,7 @@ chmod +x install.sh
 |---------|-------------|--------|
 | [`/last-word`](./last-word/) | Session wrap-up & knowledge archival before clearing context | Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
 | [`/context-doctor`](./context-doctor/) | Token usage analysis with optimization recommendations | Inspired by [RyanSeanPhillips](https://github.com/RyanSeanPhillips) |
+| [`/ping-claude`](./ping-claude/) | Daily session warm-up scheduler to avoid 5-hour rate limits | Inspired by [@maigo.tom](https://www.threads.com/@maigo.tom) |
 
 ### Install Individual Commands
 
@@ -107,6 +108,27 @@ cp context-doctor/analyze.sh context-doctor/analyze-visual.py ~/.claude/commands
 Usage in Claude Code: `/context-doctor`
 
 [Read more →](./context-doctor/)
+
+</details>
+
+<details>
+<summary><strong>/ping-claude</strong> — Daily session warm-up scheduler</summary>
+
+Automatically ping Claude Code at 09:00, 14:00, and 19:00 every day to start the session timer early — avoiding the 5-hour rate limit during peak hours.
+
+```bash
+npx claude-commands ping-claude
+# or
+curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote ping-claude
+# or manually
+mkdir -p ~/.claude/commands/ping-claude
+cp ping-claude/ping-claude.md ~/.claude/commands/ping-claude.md
+cp ping-claude/setup.sh ~/.claude/commands/ping-claude/
+```
+
+Usage in Claude Code: `/ping-claude`
+
+[Read more →](./ping-claude/)
 
 </details>
 
