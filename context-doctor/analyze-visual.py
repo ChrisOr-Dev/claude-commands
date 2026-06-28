@@ -11,11 +11,12 @@ Credit: Based on u/RyanSeanPhillips' context_analysis.py
 """
 
 import os
-import re
 import sys
 import platform
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+import doctor_core
 
 try:
     import matplotlib.pyplot as plt
@@ -46,38 +47,30 @@ COLORS = ['#ff6b6b', '#ff9f43', '#feca57', '#48dbfb', '#55efc4',
 
 
 def parse_session(fp):
+    """Adapt the shared doctor_core parser to the chart's turn shape.
+
+    One source of truth for extraction (doctor_core); here we add chart-only
+    derivations: timezone-aware timestamp, cache-miss flag, and the ctx > 5000
+    turn filter the visual has always applied.
+    """
     turns = []
-    with open(fp, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            if '"assistant"' not in line or '"input_tokens"' not in line:
-                continue
-            cache = re.search(r'"cache_read_input_tokens"\s*:\s*(\d+)', line)
-            inp = re.search(r'"input_tokens"\s*:\s*(\d+)', line)
-            out = re.search(r'"output_tokens"\s*:\s*(\d+)', line)
-            cw = re.search(r'"cache_creation_input_tokens"\s*:\s*(\d+)', line)
-            ts = re.search(r'"timestamp"\s*:\s*"([^"]+)"', line)
-
-            cr = int(cache.group(1)) if cache else 0
-            it = int(inp.group(1)) if inp else 0
-            ot = int(out.group(1)) if out else 0
-            cwr = int(cw.group(1)) if cw else 0
-            ctx = cr + it + cwr
-
-            timestamp = None
-            if ts:
-                try:
-                    timestamp = datetime.fromisoformat(
-                        ts.group(1).replace('Z', '+00:00')).astimezone(LOCAL_TZ)
-                except Exception:
-                    pass
-
-            if ctx > 5000:
-                hit_pct = (cr / ctx * 100) if ctx > 0 else 0
-                turns.append({
-                    'context': ctx, 'total': cr + it + ot + cwr,
-                    'cache_read': cr, 'is_miss': hit_pct < 20,
-                    'timestamp': timestamp,
-                })
+    for t in doctor_core.parse_session(str(fp)):
+        ctx = t['context']
+        if ctx <= 5000:
+            continue
+        timestamp = None
+        if t['timestamp']:
+            try:
+                timestamp = datetime.fromisoformat(
+                    t['timestamp'].replace('Z', '+00:00')).astimezone(LOCAL_TZ)
+            except Exception:
+                pass
+        hit_pct = (t['cache_read'] / ctx * 100) if ctx > 0 else 0
+        turns.append({
+            'context': ctx, 'total': t['total'],
+            'cache_read': t['cache_read'], 'is_miss': hit_pct < 20,
+            'timestamp': timestamp,
+        })
     return turns
 
 

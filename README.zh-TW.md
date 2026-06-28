@@ -102,7 +102,7 @@ curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/in
 # 或手動
 mkdir -p ~/.claude/commands/context-doctor
 cp context-doctor/context-doctor.md ~/.claude/commands/context-doctor.md
-cp context-doctor/analyze.sh context-doctor/analyze-visual.py ~/.claude/commands/context-doctor/
+cp context-doctor/analyze.sh context-doctor/doctor_core.py context-doctor/analyze-visual.py ~/.claude/commands/context-doctor/
 ```
 
 在 Claude Code 中使用：`/context-doctor`

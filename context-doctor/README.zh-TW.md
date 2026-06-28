@@ -17,17 +17,22 @@ Claude Code token 使用分析 — 找出 token 花在哪裡，以及如何節�
 **省 token 設計：** 重分析由獨立腳本執行（零 token 消耗）。Agent 只讀取小型 JSON 摘要並給建議。
 
 ```
-analyze.sh (純 bash)  ->  JSON 摘要  ->  agent 解讀  ->  優化建議
-   零 token 消耗          ~500 bytes     最少 token
+analyze.sh -> doctor_core.py  ->  JSON 摘要  ->  agent 解讀  ->  優化建議
+        零 token 消耗               ~500 bytes     最少 token
 ```
 
 ### 組件
 
 | 檔案 | 用途 | 依賴 |
 |------|------|------|
-| `analyze.sh` | 核心分析 — 解析 JSONL，輸出 JSON | bash + awk（內建） |
+| `analyze.sh` | 精簡包裝 — 執行解析器並輸出 JSON | bash + python3 |
+| `doctor_core.py` | 核心分析 — 解析 JSONL、彙整 token | python3（僅標準函式庫） |
 | `analyze-visual.py` | 可選圖表產生 | python3 + matplotlib + numpy |
 | `context-doctor.md` | Agent 指令（< 50 行） | 無 |
+
+> **注意：** JSON 摘要現在需要 `python3`（僅標準函式庫，無需 pip 套件）。
+> 解析已從逐行 bash/awk 移至 `doctor_core.py`，改從正規的 `.message.usage.*` 路徑讀取 token
+> 數值（舊的擷取方式會因 `usage.iterations[]` 而重複計算）。matplotlib/numpy 仍為可選，僅圖表需要。
 
 ---
 
@@ -80,7 +85,7 @@ curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/in
 # 或手動
 mkdir -p ~/.claude/commands/context-doctor
 cp context-doctor.md ~/.claude/commands/context-doctor.md
-cp analyze.sh analyze-visual.py ~/.claude/commands/context-doctor/
+cp analyze.sh doctor_core.py analyze-visual.py ~/.claude/commands/context-doctor/
 ```
 
 ## 使用
