@@ -1,0 +1,36 @@
+[project]
+name = "context-doctor"
+version = "0.1.0"
+description = "Claude Code token-usage metrics warehouse (the 'doctor' CLI)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.0",
+]
+
+[project.scripts]
+doctor = "doctor:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Explicit package discovery. This repo dir is a flat collection of loose files
+# (analyze.sh, analyze-visual.py, test_doctor_core.py, two READMEs,
+# context-doctor.md) alongside the actual package modules. Hatchling's auto
+# layout detection would choke on / mis-include those, so we name the modules
+# that make up the package by hand. Only doctor.py (the CLI entry point) and
+# doctor_core.py (the shared parser, extended in later slices) ship.
+[tool.hatch.build.targets.wheel]
+include = [
+    "doctor.py",
+    "doctor_core.py",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "doctor.py",
+    "doctor_core.py",
+    "pyproject.toml",
+    "README.md",
+]

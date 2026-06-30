@@ -120,6 +120,45 @@ install_command() {
         done
     fi
 
+    # context-doctor: additionally try to put the packaged `doctor` CLI on PATH
+    # via `uv tool install`. This is purely ADDITIVE — the stdlib script-copy of
+    # analyze.sh/analyze-visual.py/doctor_core.py above stays as the
+    # graceful-degrade path. If uv is absent (or the install fails), we warn and
+    # continue; the stdlib analyze.sh summary still works without it.
+    if [ "$cmd_name" = "context-doctor" ]; then
+        install_doctor_tool "$remote"
+    fi
+
+    return 0
+}
+
+# Best-effort install of the packaged `doctor` CLI (warehouse). Never fatal:
+# the stdlib analyze.sh path does not depend on it.
+install_doctor_tool() {
+    local remote="$1"
+
+    if [ "$remote" = "true" ]; then
+        echo -e "${YELLOW}[WARN]${NC}   doctor CLI — skipped in --remote mode (needs the local package dir for 'uv tool install')."
+        return 0
+    fi
+
+    local pkg_dir="$SCRIPT_DIR/context-doctor"
+    if [ ! -f "$pkg_dir/pyproject.toml" ]; then
+        echo -e "${YELLOW}[WARN]${NC}   doctor CLI — pyproject.toml not found; stdlib analyze.sh still works."
+        return 0
+    fi
+
+    if ! command -v uv >/dev/null 2>&1; then
+        echo -e "${YELLOW}[WARN]${NC}   doctor CLI — 'uv' not found on PATH; skipping warehouse install."
+        echo -e "${YELLOW}[WARN]${NC}   The stdlib analyze.sh summary still works. Install uv (https://docs.astral.sh/uv) to enable 'doctor'."
+        return 0
+    fi
+
+    if uv tool install --force "$pkg_dir" >/dev/null 2>&1; then
+        echo -e "${GREEN}[ OK ]${NC}   doctor CLI → installed via uv tool install"
+    else
+        echo -e "${YELLOW}[WARN]${NC}   doctor CLI — 'uv tool install' failed; stdlib analyze.sh still works."
+    fi
     return 0
 }
 
