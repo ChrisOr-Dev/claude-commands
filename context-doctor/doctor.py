@@ -21,13 +21,13 @@ summary path is unaffected and remains the graceful-degrade fallback.
 """
 
 import argparse
+import json
 import os
 import sys
 
 # Slice number that will implement the actual logic of each subcommand. Used in
 # the "not yet implemented" stubs so the message points at the right work.
 _SLICE_FOR = {
-    "ingest": 3,
     "report": 5,
     "reports": 5,
     "schema": 3,
@@ -92,6 +92,25 @@ def _not_implemented(name):
     return 1
 
 
+def _do_ingest(args):
+    """Run the real warehouse ingest: gate, connect, bootstrap, ingest, summary.
+
+    A schema-version mismatch drops & rebuilds the store (ADR-0005); on a fresh
+    or rebuilt store the ingest then backfills from scratch — both paths funnel
+    through one ``warehouse.ingest`` call here."""
+    duckdb_mod = _gate_or_exit()
+    import warehouse
+
+    conn = warehouse.connect(args.db, duckdb_mod=duckdb_mod)
+    try:
+        warehouse.bootstrap(conn)
+        summary = warehouse.ingest(conn, source_dir=args.source)
+    finally:
+        conn.close()
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
 def _add_global_overrides(parser):
     """Attach the ADR-0010 global overrides to a subcommand parser.
 
@@ -154,8 +173,9 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         return 2
 
-    # All current subcommands are warehouse commands gated on duckdb. Each stub
-    # enforces the gate first, then reports "not yet implemented (slice N)".
+    # `ingest` is wired (slice 3); the rest stay gated stubs (later slices).
+    if args.command == "ingest":
+        return _do_ingest(args)
     return _not_implemented(args.command)
 
 

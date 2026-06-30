@@ -48,8 +48,13 @@ def find_session_files(days, claude_dir=CLAUDE_DIR):
     """Yield *.jsonl session files modified within the last ``days`` days.
 
     Mirrors the original ``find ... -mtime -DAYS -not -path '*/subagents/*'``.
+
+    ``days=None`` disables the mtime window entirely and yields ALL non-subagent
+    session files — the warehouse **ingest** path (keep-all store): the ``days``
+    window is a *report* filter, not an ingest filter, so backfill must not skip
+    older JSONL. The default (an integer ``days``) is unchanged.
     """
-    cutoff = time.time() - days * 86400
+    cutoff = None if days is None else time.time() - days * 86400
     for root, _dirs, files in os.walk(claude_dir):
         if os.sep + "subagents" + os.sep in (root + os.sep):
             continue
@@ -57,6 +62,9 @@ def find_session_files(days, claude_dir=CLAUDE_DIR):
             if not name.endswith(".jsonl"):
                 continue
             fp = os.path.join(root, name)
+            if cutoff is None:
+                yield fp
+                continue
             try:
                 if os.path.getmtime(fp) >= cutoff:
                     yield fp

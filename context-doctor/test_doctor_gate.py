@@ -71,8 +71,12 @@ class TestGateExitsNonZero(unittest.TestCase):
 
 
 class TestGatePassesWhenPresent(unittest.TestCase):
-    """With duckdb present the gate is cleared; the stub then reports
-    'not yet implemented' and exits non-zero WITHOUT the install hint."""
+    """With duckdb present the gate is cleared; a still-stubbed subcommand then
+    reports 'not yet implemented' and exits non-zero WITHOUT the install hint.
+
+    ``ingest`` is wired as of slice 3, so this uses ``report`` (still a stub) to
+    exercise the gate-pass-then-stub path. (We deliberately avoid running
+    ``ingest`` with no overrides here — it would touch the real per-user store.)"""
 
     def _run(self, argv):
         err = io.StringIO()
@@ -84,8 +88,8 @@ class TestGatePassesWhenPresent(unittest.TestCase):
             code = exc.code
         return code, err.getvalue()
 
-    def test_ingest_passes_gate_then_stub(self):
-        code, err = self._run(["ingest"])
+    def test_report_passes_gate_then_stub(self):
+        code, err = self._run(["report", "summary"])
         self.assertNotEqual(code, 0)               # stub still exits non-zero
         self.assertIn("not yet implemented", err)  # got past the gate
         self.assertNotIn("install", err.lower())   # no install hint emitted
