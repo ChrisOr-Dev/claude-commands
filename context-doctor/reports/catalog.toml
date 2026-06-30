@@ -22,3 +22,46 @@ sql = "summary.sql"
 assembled = true
 [summary.params]
 days = { type = "int", default = 7 }
+
+[bands]
+description = "count/sum/mean/median/p90/max per band of a dimension (ADR-0012)"
+sql = "bands.sql"
+[bands.params]
+dimension = { type = "ident",    default = "context_tokens", choices = ["context_tokens", "total_tokens", "output_tokens", "input_tokens"] }
+edges     = { type = "int_list", default = [50000, 200000, 400000] }
+days      = { type = "int",      default = 7 }
+
+[rolling]
+description = "moving average of a metric; mode=days (per-day buckets) or mode=turns (last-N-turns window)"
+sql = "rolling.sql"
+assembled = true
+[rolling.params]
+metric = { type = "ident", default = "total_tokens", choices = ["context_tokens", "total_tokens", "output_tokens", "input_tokens"] }
+window = { type = "int",   default = 20 }
+days   = { type = "int",   default = 30 }
+mode   = { type = "ident", default = "days", choices = ["days", "turns"] }
+
+[top-expensive]
+description = "sessions ranked by peak context window (max_context_k, total_tokens_k)"
+sql = "top-expensive.sql"
+[top-expensive.params]
+days  = { type = "int", default = 30 }
+limit = { type = "int", default = 10 }
+
+[by-project]
+description = "per-project rollups: turns, sessions, max context, total tokens, miss count"
+sql = "by-project.sql"
+[by-project.params]
+days = { type = "int", default = 30 }
+
+[cache-health]
+description = "per-day cache hit rate, miss count, and estimated extra-token cost from misses"
+sql = "cache-health.sql"
+[cache-health.params]
+days = { type = "int", default = 30 }
+
+[daily]
+description = "daily token consumption: input/output/cache_read/cache_creation/total per UTC day"
+sql = "daily.sql"
+[daily.params]
+days = { type = "int", default = 30 }

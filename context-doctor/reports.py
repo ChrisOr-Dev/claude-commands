@@ -328,7 +328,10 @@ def run_report(conn, name, overrides=None, catalog=None):
         if assembler is None:
             raise ReportError(
                 "report '%s' is marked assembled but has no assembler" % name)
-        return assembler(conn, sql, bind, report)
+        # idents are passed as a 5th argument so assemblers can substitute the
+        # same ident tokens into helper SQL without re-running resolve_params.
+        # The bind dict is kept clean (no extra keys that DuckDB would reject).
+        return assembler(conn, sql, bind, report, idents)
 
     return _rows_to_dicts(conn.execute(sql, bind))
 
@@ -341,7 +344,7 @@ def _rows_to_dicts(cursor):
 
 # --- assembled reports -----------------------------------------------------
 
-def _assemble_summary(conn, main_sql, bind, report):
+def _assemble_summary(conn, main_sql, bind, report, idents=None):
     """Reproduce ``doctor_core.build_summary`` field-for-field, sourced from the
     ``turns`` table (not by re-parsing JSONL).
 
@@ -427,6 +430,52 @@ def _assemble_summary(conn, main_sql, bind, report):
     }
 
 
+def _assemble_rolling(conn, main_sql, bind, report, idents=None):
+    """Dispatch to mode-specific helper SQL (rolling_days.sql / rolling_turns.sql).
+
+    The ``mode`` text param selects which helper to load.  Accepted values:
+    ``'days'`` (per-day buckets, N-day moving average — the Grafana-style default)
+    and ``'turns'`` (last-N-turns window over individual turns).  Any other value
+    raises :class:`ReportError` with a clear user-facing message.
+
+    The ``metric`` ident is already resolved in ``idents`` (passed through from
+    :func:`run_report`).  We re-apply the same token substitution to the helper
+    template so DuckDB sees a concrete column name, never a raw ``{metric}`` token.
+
+    Returns a list-of-dict rows (tabular time-series output).
+    """
+    if idents is None:
+        idents = {}
+
+    # `mode` is an `ident` param (whitelisted choices=["days","turns"]), so it is
+    # resolved into `idents` (not `bind`) by resolve_params — the engine already
+    # rejected any value outside the whitelist. It selects which helper template
+    # to load; it is never interpolated into SQL. `metric` (also an ident) stays
+    # in `idents` and is substituted into the {metric} token below.
+    mode = idents.get("mode", "days")
+    if mode not in ("days", "turns"):  # belt-and-suspenders; resolve_params guards
+        raise ReportError(
+            "report 'rolling': param 'mode' must be 'days' or 'turns' "
+            "(got %r)" % mode)
+
+    # Load the mode-specific helper SQL from the same reports/ directory.
+    helper_name = "rolling_%s.sql" % mode
+    helper_path = report.sql_file_dir / helper_name
+    try:
+        helper_sql_template = helper_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ReportError(
+            "report 'rolling': cannot read helper '%s': %s" % (helper_name, exc))
+
+    # Substitute ident tokens ({metric}) into the helper template — the same
+    # whitelist-validated column that was substituted into the main SQL.
+    helper_sql = _TOKEN_RE.sub(
+        lambda m: idents.get(m.group(1), m.group(0)), helper_sql_template)
+
+    return _rows_to_dicts(conn.execute(helper_sql, bind))
+
+
 _ASSEMBLERS = {
     "summary": _assemble_summary,
+    "rolling": _assemble_rolling,
 }
