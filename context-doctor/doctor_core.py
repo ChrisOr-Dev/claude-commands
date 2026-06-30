@@ -63,51 +63,148 @@ def find_session_files(days, claude_dir=CLAUDE_DIR):
                 continue
 
 
-def parse_session(path):
-    """Parse one JSONL file into a list of per-turn dicts.
+def _count_blocks(content):
+    """Count message.content[] blocks by type. Tolerant of absent/non-list."""
+    n_tool_use = n_thinking = n_text = 0
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            bt = block.get("type")
+            if bt == "tool_use":
+                n_tool_use += 1
+            elif bt == "thinking":
+                n_thinking += 1
+            elif bt == "text":
+                n_text += 1
+    return n_tool_use, n_thinking, n_text
 
-    One row per ``assistant`` record carrying ``.message.usage``. Tokens are read
-    from the canonical usage path; ``iterations[]`` is ignored by construction.
-    Malformed lines are skipped. Returns raw values plus derived ``context`` and
-    ``total`` so both consumers (summary + chart) share one parse.
+
+def _row_for(rec, proj, path):
+    """Build a turn row dict from an assistant record carrying ``message.usage``.
+
+    Returns ``None`` if the record is not an assistant turn with a usage dict.
+    Carries both the legacy summary keys (untouched) and the richer warehouse
+    ``turns`` columns, all read from the single record already in hand.
+    """
+    if rec.get("type") != "assistant":
+        return None
+    message = rec.get("message") or {}
+    usage = message.get("usage")
+    if not isinstance(usage, dict):
+        return None
+
+    inp = _int(usage.get("input_tokens"))
+    out = _int(usage.get("output_tokens"))
+    cr = _int(usage.get("cache_read_input_tokens"))
+    cw = _int(usage.get("cache_creation_input_tokens"))
+    ctx = cr + inp + cw
+
+    model = message.get("model")
+    is_synthetic = model == "<synthetic>"
+
+    if ctx == 0:
+        hit_pct = None
+        is_miss = False
+    else:
+        hit_pct = (cr / ctx) * 100
+        is_miss = ctx > CTX_MIN_FOR_MISS and hit_pct < MISS_HIT_PCT
+
+    n_tool_use, n_thinking, n_text = _count_blocks(message.get("content"))
+
+    server = usage.get("server_tool_use")
+    if not isinstance(server, dict):
+        server = {}
+    web_search = _int(server.get("web_search_requests"))
+    web_fetch = _int(server.get("web_fetch_requests"))
+
+    return {
+        # --- legacy summary keys (unchanged) ---
+        "session": rec.get("sessionId") or "unknown",
+        "project": proj,
+        "input": inp,
+        "output": out,
+        "cache_read": cr,
+        "cache_creation": cw,
+        "context": ctx,
+        "total": ctx + out,
+        "timestamp": rec.get("timestamp") or "",
+        # --- richer warehouse `turns` columns ---
+        "uuid": rec.get("uuid"),
+        "parent_uuid": rec.get("parentUuid"),
+        "git_branch": rec.get("gitBranch"),
+        "cwd": rec.get("cwd"),
+        "model": model,
+        "is_synthetic": is_synthetic,
+        "stop_reason": message.get("stop_reason"),
+        "hit_pct": hit_pct,
+        "is_miss": is_miss,
+        "n_tool_use": n_tool_use,
+        "n_thinking": n_thinking,
+        "n_text": n_text,
+        "web_search": web_search,
+        "web_fetch": web_fetch,
+        "source_file": path,
+    }
+
+
+def iter_session(path, start_offset=0, start_line_no=0):
+    """Generator yielding one turn row dict per assistant record with usage.
+
+    Append-aware incremental resume: opens ``path`` in binary mode, seeks to
+    ``start_offset``, and tracks the byte position by accumulating each line's
+    raw byte length (never relying on text-mode ``tell()``). Only lines ending in
+    ``b"\\n"`` are consumed; a partial trailing line (concurrent append) or EOF
+    stops iteration, leaving that line for the next run.
+
+    Every fully-consumed line advances the offset and increments the line count
+    (assistant or not), so ``end_line_no`` is an absolute line index. Yields rows
+    only for ``assistant`` records carrying ``message.usage``.
+
+    On exhaustion, ``return``s ``(end_offset, end_line_no)`` — surfaced to the
+    caller as ``StopIteration.value`` (or discarded by ``list()``).
     """
     proj = project_for(path)
-    turns = []
+    offset = start_offset
+    line_no = start_line_no
     try:
-        f = open(path, "r", encoding="utf-8", errors="ignore")
+        f = open(path, "rb")
     except OSError:
-        return turns
+        return (offset, line_no)
     with f:
-        for line in f:
+        f.seek(start_offset)
+        while True:
+            raw = f.readline()
+            if not raw.endswith(b"\n"):
+                # partial trailing line or EOF: leave unconsumed.
+                break
+            offset += len(raw)
+            line_no += 1
+            line = raw.decode("utf-8", errors="ignore")
             if '"assistant"' not in line:
                 continue
             try:
                 rec = json.loads(line)
             except (ValueError, TypeError):
                 continue
-            if rec.get("type") != "assistant":
-                continue
-            usage = (rec.get("message") or {}).get("usage")
-            if not isinstance(usage, dict):
-                continue
+            row = _row_for(rec, proj, path)
+            if row is not None:
+                yield row
+    return (offset, line_no)
 
-            inp = _int(usage.get("input_tokens"))
-            out = _int(usage.get("output_tokens"))
-            cr = _int(usage.get("cache_read_input_tokens"))
-            cw = _int(usage.get("cache_creation_input_tokens"))
-            ctx = cr + inp + cw
-            turns.append({
-                "session": rec.get("sessionId") or "unknown",
-                "project": proj,
-                "input": inp,
-                "output": out,
-                "cache_read": cr,
-                "cache_creation": cw,
-                "context": ctx,
-                "total": ctx + out,
-                "timestamp": rec.get("timestamp") or "",
-            })
-    return turns
+
+def parse_session(path):
+    """Parse one JSONL file into a list of per-turn dicts.
+
+    One row per ``assistant`` record carrying ``.message.usage``. Tokens are read
+    from the canonical usage path; ``iterations[]`` is ignored by construction.
+    Malformed lines are skipped. Returns the legacy summary keys plus the richer
+    warehouse ``turns`` columns so all consumers share one extraction.
+
+    Thin shim over ``iter_session`` — ``list()`` consumes the generator and
+    discards its ``(end_offset, end_line_no)`` return value.
+    """
+    return list(iter_session(path))
 
 
 def _int(v):
