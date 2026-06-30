@@ -113,7 +113,26 @@ def _detect_ram_bytes():
 def _memory_limit_bytes():
     """Conservative cap: min(1GB, ~25% of detected RAM), 512MB floor.
 
-    Falls back to 1GB if RAM is undetectable."""
+    Falls back to 1GB if RAM is undetectable.
+
+    **Override (ops / testing):** set the ``DOCTOR_MEMORY_LIMIT_BYTES``
+    environment variable to a positive integer to override the auto-derived
+    cap entirely.  The value is floored at 64 MB (``_MEM_FLOOR_OVERRIDE``) so
+    an operator never accidentally sets an unworkably low cap in production; it
+    is never clamped upward, so a low test value like ``67108864`` (64 MB) is
+    honoured as-is.  When the env var is absent or zero the default heuristic
+    applies unchanged — existing tests and production behaviour are unaffected.
+    """
+    raw_env = os.environ.get("DOCTOR_MEMORY_LIMIT_BYTES", "")
+    if raw_env:
+        try:
+            env_val = int(raw_env)
+        except ValueError:
+            env_val = 0
+        if env_val > 0:
+            _MEM_FLOOR_OVERRIDE = 64 * 1024 * 1024  # 64 MB — safety floor for override
+            return max(_MEM_FLOOR_OVERRIDE, env_val)
+
     ram = _detect_ram_bytes()
     if ram is None:
         candidate = _GB
