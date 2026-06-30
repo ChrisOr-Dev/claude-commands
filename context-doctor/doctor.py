@@ -8,10 +8,9 @@ subcommands as an argparse skeleton:
     doctor reports
     doctor schema
 
-with global ``--source <dir>`` / ``--db <path>`` overrides. The actual
-ingest/report/schema LOGIC is implemented in later slices; here those
-subcommands are stubbed with a clear "not yet implemented" message and a
-non-zero exit.
+with global ``--source <dir>`` / ``--db <path>`` overrides. ``ingest`` (slice 3),
+``report`` / ``reports`` (slice 5 — the catalog engine) are wired; ``schema``
+remains a gated stub for a later slice.
 
 The one piece of real behavior in this slice is the **duckdb degrade gate**
 (``require_duckdb``): every warehouse subcommand first checks that the Python
@@ -28,8 +27,6 @@ import sys
 # Slice number that will implement the actual logic of each subcommand. Used in
 # the "not yet implemented" stubs so the message points at the right work.
 _SLICE_FOR = {
-    "report": 5,
-    "reports": 5,
     "schema": 3,
 }
 
@@ -111,6 +108,110 @@ def _do_ingest(args):
     return 0
 
 
+def _parse_param_overrides(extra):
+    """Turn leftover ``--name value`` / ``--name=value`` tokens into a
+    ``{name: value}`` overrides map for a report's typed params.
+
+    Report params are per-report (declared in the catalog), so they can't be
+    fixed argparse flags. We collect the report subcommand's *unknown* args here
+    and fold them into overrides; reports.resolve_params then validates each
+    against the report's schema (unknown names rejected there). A clear error
+    (no traceback) is raised for a malformed token."""
+    overrides = {}
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if not tok.startswith("--"):
+            raise _CliError(
+                "unexpected argument %r (report params use --name value)" % tok)
+        body = tok[2:]
+        if "=" in body:
+            name, value = body.split("=", 1)
+            i += 1
+        else:
+            name = body
+            if i + 1 >= len(extra) or extra[i + 1].startswith("--"):
+                raise _CliError("param '--%s' expects a value" % name)
+            value = extra[i + 1]
+            i += 2
+        if not name:
+            raise _CliError("malformed param flag %r" % tok)
+        overrides[name] = value
+    return overrides
+
+
+class _CliError(Exception):
+    """A clear user-facing CLI error printed to stderr with a non-zero exit."""
+
+
+def _do_reports(args):
+    """List the report catalog (name + description + params) as JSON."""
+    _gate_or_exit()
+    import reports
+    try:
+        listing = reports.list_reports()
+    except reports.ReportError as exc:
+        print("context-doctor: %s" % exc, file=sys.stderr)
+        return 1
+    print(json.dumps(listing, indent=2))
+    return 0
+
+
+def _do_report(args, extra):
+    """Run a catalog report by name.
+
+    ``--sql``: print the report's SQL template and return WITHOUT touching the
+    store (no connect, no ingest, no execute). Otherwise: gate, connect,
+    bootstrap, auto-ingest the tail (so the read is fresh), run the report, and
+    print its JSON payload."""
+    duckdb_mod = _gate_or_exit()
+    import reports
+
+    if not args.name:
+        print("context-doctor: 'report' requires a report name "
+              "(see 'doctor reports').", file=sys.stderr)
+        return 2
+
+    # --sql prints the template only; never executes or ingests.
+    if args.sql:
+        try:
+            print(reports.report_sql(args.name))
+        except reports.ReportError as exc:
+            print("context-doctor: %s" % exc, file=sys.stderr)
+            return 1
+        return 0
+
+    try:
+        overrides = _parse_param_overrides(extra)
+    except _CliError as exc:
+        print("context-doctor: %s" % exc, file=sys.stderr)
+        return 2
+
+    # Validate the report name + params BEFORE any DB work, so a bad invocation
+    # never spins up / ingests into a store.
+    try:
+        catalog = reports.load_catalog()
+        report = reports.get_report(args.name, catalog)
+        reports.resolve_params(report, overrides)
+    except reports.ReportError as exc:
+        print("context-doctor: %s" % exc, file=sys.stderr)
+        return 1
+
+    import warehouse
+    conn = warehouse.connect(args.db, duckdb_mod=duckdb_mod)
+    try:
+        warehouse.bootstrap(conn)
+        warehouse.ingest(conn, source_dir=args.source)  # auto-ingest tail first
+        payload = reports.run_report(conn, args.name, overrides, catalog)
+    except reports.ReportError as exc:
+        print("context-doctor: %s" % exc, file=sys.stderr)
+        return 1
+    finally:
+        conn.close()
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def _add_global_overrides(parser):
     """Attach the ADR-0010 global overrides to a subcommand parser.
 
@@ -167,15 +268,25 @@ def build_parser():
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
-    args = parser.parse_args(argv)
+    # `report` carries per-report typed params (declared in the catalog, not in
+    # argparse). Collect its unknown `--name value` tokens via parse_known_args
+    # and fold them into the report's overrides; every other subcommand uses
+    # strict parsing (unknown flags are still errors there).
+    if argv and argv[0] == "report":
+        args, extra = parser.parse_known_args(argv)
+    else:
+        args, extra = parser.parse_args(argv), []
 
     if not args.command:
         parser.print_help(sys.stderr)
         return 2
 
-    # `ingest` is wired (slice 3); the rest stay gated stubs (later slices).
     if args.command == "ingest":
         return _do_ingest(args)
+    if args.command == "report":
+        return _do_report(args, extra)
+    if args.command == "reports":
+        return _do_reports(args)
     return _not_implemented(args.command)
 
 

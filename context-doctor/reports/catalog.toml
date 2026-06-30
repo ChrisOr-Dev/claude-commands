@@ -1,0 +1,24 @@
+# Context-Doctor report catalog (ADR-0006: hybrid `.sql` + TOML manifest).
+#
+# Each [<name>] entry declares one named, parameterized report:
+#   description = human-readable one-liner (shown by `doctor reports`)
+#   sql         = sibling .sql template file (the "main query"; `--sql` prints it)
+#   assembled   = (optional, bool) the report's JSON is post-assembled in Python
+#                 from this + helper queries (so a flat result set isn't the whole
+#                 payload). The main `sql` still carries the params so `--sql` and
+#                 param-validation apply.
+#   [<name>.params] = typed param schema. Kinds:
+#     int / float / text  -> bound via DuckDB $name placeholders (injection-safe)
+#     int_list            -> "50k,200k,400k" shorthand -> [50000,200000,400000];
+#                            bound as a list via $name (never interpolated)
+#     ident               -> a column name; validated against `choices`, then
+#                            substituted into a {name} token in the template
+#   Any {token} in a .sql template MUST correspond to an `ident` param, else the
+#   loader rejects the report.
+
+[summary]
+description = "Milestone-A token-usage summary (back-compat analyze.sh JSON schema)"
+sql = "summary.sql"
+assembled = true
+[summary.params]
+days = { type = "int", default = 7 }

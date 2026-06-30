@@ -10,9 +10,11 @@ when duckdb is present.
 """
 
 import io
+import json
 import os
+import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 
 import doctor
 
@@ -71,28 +73,56 @@ class TestGateExitsNonZero(unittest.TestCase):
 
 
 class TestGatePassesWhenPresent(unittest.TestCase):
-    """With duckdb present the gate is cleared; a still-stubbed subcommand then
-    reports 'not yet implemented' and exits non-zero WITHOUT the install hint.
+    """With duckdb present the gate is cleared and the real subcommand runs.
 
-    ``ingest`` is wired as of slice 3, so this uses ``report`` (still a stub) to
-    exercise the gate-pass-then-stub path. (We deliberately avoid running
-    ``ingest`` with no overrides here — it would touch the real per-user store.)"""
+    Slice 5 wired ``report`` and ``reports`` for real, so we use isolated
+    ``--source``/``--db`` overrides (temp dirs) to exercise gate-pass without
+    touching the live per-user store.  The test verifies that, when duckdb is
+    available, the command exits without the install hint and produces output."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = self._tmp.name
+        self.source = os.path.join(root, "projects")
+        os.makedirs(self.source)
+        self.db = os.path.join(root, "test.duckdb")
+
+    def tearDown(self):
+        self._tmp.cleanup()
 
     def _run(self, argv):
-        err = io.StringIO()
+        out, err = io.StringIO(), io.StringIO()
         os.environ.pop("DOCTOR_FORCE_NO_DUCKDB", None)
         try:
-            with redirect_stderr(err):
+            with redirect_stdout(out), redirect_stderr(err):
                 code = doctor.main(argv)
         except SystemExit as exc:
             code = exc.code
-        return code, err.getvalue()
+        return code, out.getvalue(), err.getvalue()
 
-    def test_report_passes_gate_then_stub(self):
-        code, err = self._run(["report", "summary"])
-        self.assertNotEqual(code, 0)               # stub still exits non-zero
-        self.assertIn("not yet implemented", err)  # got past the gate
-        self.assertNotIn("install", err.lower())   # no install hint emitted
+    def test_report_passes_gate_and_runs(self):
+        """doctor report summary (with overrides) exits 0 and returns JSON."""
+        code, out, err = self._run([
+            "report", "summary",
+            "--source", self.source, "--db", self.db,
+        ])
+        self.assertEqual(code, 0, "expected exit 0; stderr=%r" % err)
+        # No install hint (gate was cleared).
+        self.assertNotIn("install", err.lower())
+        # Output is valid JSON with the summary keys.
+        payload = json.loads(out)
+        self.assertIn("total_turns", payload)
+
+    def test_reports_passes_gate_and_lists_catalog(self):
+        """doctor reports exits 0 and includes 'summary' in the listing."""
+        code, out, err = self._run([
+            "reports",
+            "--source", self.source, "--db", self.db,
+        ])
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("install", err.lower())
+        listing = json.loads(out)
+        self.assertIn("summary", [r["name"] for r in listing])
 
 
 class TestParserSkeleton(unittest.TestCase):
