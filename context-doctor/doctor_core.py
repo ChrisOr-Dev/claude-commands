@@ -18,6 +18,7 @@ Credit: Inspired by u/RyanSeanPhillips' context_analysis.py
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -148,23 +149,21 @@ def _row_for(rec, proj, path):
     }
 
 
-def iter_session(path, start_offset=0, start_line_no=0):
-    """Generator yielding one turn row dict per assistant record with usage.
+def _iter_lines(path, start_offset=0, start_line_no=0):
+    """Shared byte-offset line walker for the incremental parsers.
 
-    Append-aware incremental resume: opens ``path`` in binary mode, seeks to
-    ``start_offset``, and tracks the byte position by accumulating each line's
-    raw byte length (never relying on text-mode ``tell()``). Only lines ending in
-    ``b"\\n"`` are consumed; a partial trailing line (concurrent append) or EOF
-    stops iteration, leaving that line for the next run.
-
-    Every fully-consumed line advances the offset and increments the line count
-    (assistant or not), so ``end_line_no`` is an absolute line index. Yields rows
-    only for ``assistant`` records carrying ``message.usage``.
+    Opens ``path`` in binary mode, seeks to ``start_offset``, and yields
+    ``(line_no, decoded_line)`` for every newline-terminated line, tracking the
+    byte position by accumulating each line's raw byte length (never relying on
+    text-mode ``tell()``). Only lines ending in ``b"\\n"`` are consumed; a partial
+    trailing line (concurrent append) or EOF stops iteration, leaving that line
+    for the next run. ``line_no`` is the absolute 1-based line index of the line
+    just yielded.
 
     On exhaustion, ``return``s ``(end_offset, end_line_no)`` — surfaced to the
-    caller as ``StopIteration.value`` (or discarded by ``list()``).
+    caller as ``StopIteration.value``. Both ``iter_session`` and ``parse_events``
+    build on this so their offset mechanics can never drift.
     """
-    proj = project_for(path)
     offset = start_offset
     line_no = start_line_no
     try:
@@ -180,17 +179,190 @@ def iter_session(path, start_offset=0, start_line_no=0):
                 break
             offset += len(raw)
             line_no += 1
-            line = raw.decode("utf-8", errors="ignore")
-            if '"assistant"' not in line:
-                continue
-            try:
-                rec = json.loads(line)
-            except (ValueError, TypeError):
-                continue
-            row = _row_for(rec, proj, path)
-            if row is not None:
-                yield row
+            yield (line_no, raw.decode("utf-8", errors="ignore"))
     return (offset, line_no)
+
+
+def iter_session(path, start_offset=0, start_line_no=0):
+    """Generator yielding one turn row dict per assistant record with usage.
+
+    Append-aware incremental resume via :func:`_iter_lines`: only ``assistant``
+    records carrying ``message.usage`` produce a row, but every fully-consumed
+    line advances the offset and line count so ``end_line_no`` is an absolute
+    line index.
+
+    On exhaustion, ``return``s ``(end_offset, end_line_no)`` — surfaced to the
+    caller as ``StopIteration.value`` (or discarded by ``list()``).
+    """
+    proj = project_for(path)
+    walker = _iter_lines(path, start_offset, start_line_no)
+    while True:
+        try:
+            _line_no, line = next(walker)
+        except StopIteration as stop:
+            return stop.value
+        if '"assistant"' not in line:
+            continue
+        try:
+            rec = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        row = _row_for(rec, proj, path)
+        if row is not None:
+            yield row
+
+
+_COMMAND_NAME_RE = re.compile(r"<command-name>(.*?)</command-name>", re.DOTALL)
+
+
+def _command_name_from_content(content):
+    """Extract a slash-command name from a ``local_command`` ``content`` blob.
+
+    Real ``system/local_command`` records carry NO ``command`` field; the command
+    name (when present) is embedded in ``content`` as ``<command-name>/foo<…>``.
+    Many such records are stdout-only continuations with no command tag — those
+    yield ``None``. Returns the stripped command name or ``None``.
+    """
+    if not isinstance(content, str):
+        return None
+    m = _COMMAND_NAME_RE.search(content)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    return name or None
+
+
+def _count_tool_results(content):
+    """Count ``tool_result`` blocks in a ``user`` ``message.content`` list."""
+    if not isinstance(content, list):
+        return 0
+    return sum(
+        1 for b in content
+        if isinstance(b, dict) and b.get("type") == "tool_result"
+    )
+
+
+def _events_for(rec, line_no):
+    """Project one curated record into zero or more generic ``events`` dicts.
+
+    Mirrors the per-type table in the warehouse plan. Returns a list of event
+    dicts (a single ``assistant`` line may yield several — one per ``tool_use``
+    block). Unknown / skipped record types return an empty list and never raise.
+    No ``seq`` is assigned here (the ingest layer owns that); each event carries
+    the absolute source ``line_no`` instead.
+    """
+    rtype = rec.get("type")
+    session_id = rec.get("sessionId")
+    ts = rec.get("timestamp")
+
+    def ev(etype, subtype=None, key=None, num=None, ref=None):
+        return {
+            "session_id": session_id,
+            "ts": ts,
+            "line_no": line_no,
+            "type": etype,
+            "subtype": subtype,
+            "key": key,
+            "num": num,
+            "ref": ref,
+        }
+
+    if rtype == "assistant":
+        out = []
+        message = rec.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+                name = block.get("name")
+                key = None
+                if name == "Skill":
+                    inp = block.get("input")
+                    if isinstance(inp, dict):
+                        key = inp.get("skill")
+                out.append(ev("tool_use", subtype=name, key=key,
+                              ref=rec.get("uuid")))
+        return out
+
+    if rtype == "user":
+        message = rec.get("message") or {}
+        content = message.get("content")
+        has_tur = "toolUseResult" in rec
+        n_results = _count_tool_results(content)
+        if has_tur or n_results:
+            if isinstance(content, list):
+                num = n_results
+            else:
+                # toolUseResult present but content isn't a list -> fallback 1.
+                num = n_results if n_results else 1
+            return [ev("user", subtype="tool_result", num=num,
+                       ref=rec.get("promptId"))]
+        return [ev("user", subtype="prompt")]
+
+    if rtype == "system":
+        subtype = rec.get("subtype")
+        if subtype == "turn_duration":
+            mc = rec.get("messageCount")
+            return [ev("system", subtype="turn_duration",
+                       num=rec.get("durationMs"),
+                       key=(str(mc) if mc is not None else None))]
+        if subtype == "compact_boundary":
+            return [ev("system", subtype="compact_boundary")]
+        if subtype == "local_command":
+            return [ev("command", subtype="local_command",
+                       key=_command_name_from_content(rec.get("content")))]
+        # stop_hook_summary / away_summary / api_error / … -> skip (curated set).
+        return []
+
+    if rtype == "attachment":
+        att = rec.get("attachment")
+        if not isinstance(att, dict):
+            return []
+        att_type = att.get("type")
+        if att_type == "queued_command":
+            key = att.get("prompt") or att.get("commandMode")
+            return [ev("command", subtype="queued_command", key=key)]
+        return [ev("attachment", subtype=att_type)]
+
+    if rtype == "mode":
+        return [ev("mode", key=rec.get("mode"))]
+
+    if rtype == "permission-mode":
+        return [ev("permission-mode", key=rec.get("permissionMode"))]
+
+    # ai-title / custom-title / last-prompt / file-history-snapshot /
+    # queue-operation / … -> skip, never crash.
+    return []
+
+
+def parse_events(path, start_offset=0, start_line_no=0):
+    """Generator projecting curated records into generic ``events`` rows.
+
+    Sibling of :func:`iter_session` sharing the exact same byte-offset mechanics
+    (via :func:`_iter_lines`). Yields one event dict per projected event — a
+    single ``assistant`` line may yield several (one per ``tool_use`` block). Each
+    event dict has keys ``session_id, ts, line_no, type, subtype, key, num, ref``.
+    Does NOT assign ``seq`` (the ingest layer does, since one line can hold many
+    events). Unknown / skipped record types produce no rows and never crash.
+
+    On exhaustion, ``return``s ``(end_offset, end_line_no)`` — surfaced to the
+    caller as ``StopIteration.value``.
+    """
+    walker = _iter_lines(path, start_offset, start_line_no)
+    while True:
+        try:
+            line_no, line = next(walker)
+        except StopIteration as stop:
+            return stop.value
+        try:
+            rec = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(rec, dict):
+            continue
+        for event in _events_for(rec, line_no):
+            yield event
 
 
 def parse_session(path):
