@@ -155,7 +155,7 @@ install_doctor_tool() {
     fi
 
     if uv tool install --force "$pkg_dir" >/dev/null 2>&1; then
-        echo -e "${GREEN}[ OK ]${NC}   doctor CLI → installed via uv tool install"
+        echo -e "${GREEN}[ OK ]${NC}   doctor CLI → installed via uv tool install (warehouse enabled)"
     else
         echo -e "${YELLOW}[WARN]${NC}   doctor CLI — 'uv tool install' failed; stdlib analyze.sh still works."
     fi
@@ -234,3 +234,17 @@ if [ $SUCCESS -gt 0 ]; then
     echo ""
     echo "Usage: type /<command-name> in Claude Code to run."
 fi
+
+# Two-tier recap for context-doctor: the stdlib summary always works; the
+# optional DuckDB warehouse (`doctor` CLI) is an additive layer via uv.
+for cmd in "${COMMANDS[@]}"; do
+    if [ "$cmd" = "context-doctor" ]; then
+        echo ""
+        echo "context-doctor installs in two tiers:"
+        echo "  1. stdlib summary (always) — bash analyze.sh + doctor_core.py, python3 only."
+        echo "  2. warehouse (optional)    — the 'doctor' CLI via 'uv tool install' (needs uv + duckdb)."
+        echo "     If uv is absent the warehouse is skipped and /context-doctor falls back to the"
+        echo "     stdlib summary — the command still works, just without the queryable report catalog."
+        break
+    fi
+done

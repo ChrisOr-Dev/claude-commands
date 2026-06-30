@@ -28,11 +28,33 @@ analyze.sh -> doctor_core.py  ->  JSON 摘要  ->  agent 解讀  ->  優化建�
 | `analyze.sh` | 精簡包裝 — 執行解析器並輸出 JSON | bash + python3 |
 | `doctor_core.py` | 核心分析 — 解析 JSONL、彙整 token | python3（僅標準函式庫） |
 | `analyze-visual.py` | 可選圖表產生 | python3 + matplotlib + numpy |
+| `doctor`（CLI） | 可選的 DuckDB **倉儲** — 增量 ingest + 可查詢的報告目錄 | uv + duckdb |
+| `warehouse.py` / `reports.py` / `reports/` | 倉儲 store/ingest + 報告目錄引擎 | （`doctor` 套件的一部分） |
 | `context-doctor.md` | Agent 指令（< 50 行） | 無 |
 
-> **注意：** JSON 摘要現在需要 `python3`（僅標準函式庫，無需 pip 套件）。
+> **注意：** stdlib JSON 摘要只需要 `python3`（無需 pip 套件）。
 > 解析已從逐行 bash/awk 移至 `doctor_core.py`，改從正規的 `.message.usage.*` 路徑讀取 token
-> 數值（舊的擷取方式會因 `usage.iterations[]` 而重複計算）。matplotlib/numpy 仍為可選，僅圖表需要。
+> 數值（舊的擷取方式會因 `usage.iterations[]` 而重複計算）。matplotlib/numpy 仍為可選（圖表）；
+> `uv`/`duckdb` 也為可選（倉儲）。
+
+---
+
+## 倉儲（可選） {#warehouse-optional}
+
+`doctor` CLI 是一個 DuckDB 後端的**指標倉儲**：不再每次都重新解析所有 JSONL 並只輸出一個固定數值，而是把新 session **增量 ingest** 進本地 store（`~/.claude/context-doctor/metrics.duckdb`），並提供一份**具名、可帶參數的報告目錄** — 分布統計（median/p90）、可設定的 bands、rolling 平均、各 project 彙整 — 全部以 JSON 輸出。
+
+```bash
+doctor reports                                              # 列出報告目錄
+doctor report summary --days 7                              # 向後相容摘要（與 analyze.sh 同 schema）
+doctor report bands --dimension context_tokens --edges 50k,200k,400k
+doctor report rolling --metric total_tokens --window 20 --mode days
+doctor report <name> --sql                                 # 印出某報告的 SQL（複製/擴充）
+doctor ingest                                               # 手動更新（report 會自動先 ingest）
+```
+
+可用報告：`summary`、`bands`、`rolling`、`top-expensive`、`by-project`、`cache-health`、`daily`。
+
+**優雅降級。** 倉儲純為附加。`doctor report summary` 輸出與 `analyze.sh` *相同*的 JSON schema，而 `/context-doctor` skill 會優先使用 `doctor`，在缺少 `uv`/`duckdb` 時回退到 stdlib 的 `analyze.sh` — 因此摘要在有無倉儲時都能運作。需要 [`uv`](https://docs.astral.sh/uv)（`uv tool install` 會把 `doctor` 放上 PATH 並一併取得 `duckdb`）。
 
 ---
 
@@ -74,6 +96,10 @@ bash ~/.claude/commands/context-doctor/analyze.sh 30
 
 # 視覺化圖表（需要 matplotlib）
 python3 ~/.claude/commands/context-doctor/analyze-visual.py 7
+
+# 倉儲報告（需要 uv + duckdb）
+doctor report summary --days 7
+doctor report bands --dimension context_tokens --edges 50k,200k,400k
 ```
 
 ---
@@ -81,11 +107,18 @@ python3 ~/.claude/commands/context-doctor/analyze-visual.py 7
 ## 安裝
 
 ```bash
+# 從本地 clone 安裝 — 安裝 skill + stdlib 腳本，且若有 uv，會透過 `uv tool install`
+# 把 `doctor` 倉儲 CLI 放上 PATH（盡力而為；沒有 uv/duckdb 時 stdlib 摘要仍可運作）。
+./install.sh context-doctor
+
+# 遠端（僅 skill + stdlib 腳本；倉儲需要本地套件目錄）：
 curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote context-doctor
-# 或手動
+
+# 或完全手動
 mkdir -p ~/.claude/commands/context-doctor
 cp context-doctor.md ~/.claude/commands/context-doctor.md
 cp analyze.sh doctor_core.py analyze-visual.py ~/.claude/commands/context-doctor/
+uv tool install ./context-doctor    # 可選：啟用 `doctor` 倉儲 CLI
 ```
 
 ## 使用

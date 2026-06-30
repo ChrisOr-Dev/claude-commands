@@ -95,6 +95,8 @@ cp last-word/last-word.md ~/.claude/commands/last-word.md
 
 分析 Claude Code 的 token 使用情況並取得優化建議。重分析由獨立腳本執行（零 token 消耗）。
 
+可選擇安裝 DuckDB 後端的**倉儲**（`doctor` CLI），提供增量 ingest 與可查詢的報告目錄（bands、rolling 平均、分布統計）。它需要 [`uv`](https://docs.astral.sh/uv) + `duckdb`；若兩者皆無，stdlib 摘要仍可運作（優雅降級）。詳見[指令 README](./context-doctor/#warehouse-optional)。
+
 ```bash
 npx claude-commands context-doctor
 # 或

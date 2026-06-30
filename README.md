@@ -95,6 +95,8 @@ Usage in Claude Code: `/last-word`
 
 Analyze your Claude Code token usage and get optimization recommendations. Heavy analysis runs in standalone scripts (zero token cost).
 
+Optionally installs a DuckDB-backed **warehouse** (`doctor` CLI) for incremental ingest + a queryable report catalog (bands, rolling averages, distribution stats). It needs [`uv`](https://docs.astral.sh/uv) + `duckdb`; without them the stdlib summary still works (graceful degrade). See [the command README](./context-doctor/#warehouse-optional).
+
 ```bash
 npx claude-commands context-doctor
 # or

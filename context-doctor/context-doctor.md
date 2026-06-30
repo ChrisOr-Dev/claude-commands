@@ -5,10 +5,12 @@ Heavy analysis runs in an external script (zero token cost). You only interpret 
 
 ## Execute
 
-1. Run the analysis script:
+1. Run the summary. Prefer the packaged `doctor` warehouse CLI (DuckDB-backed; incrementally ingests new sessions, then reports), and fall back to the stdlib script if `doctor`/`duckdb` is unavailable. Both emit the **same** JSON schema, so the rules below apply unchanged:
 ```bash
-bash ~/.claude/commands/context-doctor/analyze.sh 7
+doctor report summary --days 7 2>/dev/null || bash ~/.claude/commands/context-doctor/analyze.sh 7
 ```
+
+   Optional richer views (only when the warehouse is available — same zero-token JSON pattern): `doctor reports` lists the catalog; e.g. `doctor report bands --dimension context_tokens --edges 50k,200k,400k`, `doctor report rolling --metric total_tokens --window 20 --mode days`, `doctor report by-project`, `doctor report cache-health`.
 
 2. If python3 + matplotlib are available, generate a visual chart:
 ```bash

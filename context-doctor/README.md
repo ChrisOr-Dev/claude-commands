@@ -25,15 +25,36 @@ analyze.sh -> doctor_core.py  ->  JSON summary  ->  agent interprets  ->  recomm
 
 | File | Purpose | Dependencies |
 |------|---------|-------------|
-| `analyze.sh` | Thin wrapper — runs the parser, outputs JSON | bash + python3 |
+| `analyze.sh` | Thin stdlib wrapper — runs the parser, outputs the JSON summary | bash + python3 |
 | `doctor_core.py` | Core analysis — parses JSONL, aggregates tokens | python3 (stdlib only) |
 | `analyze-visual.py` | Optional chart generation | python3 + matplotlib + numpy |
+| `doctor` (CLI) | Optional DuckDB **warehouse** — incremental ingest + a queryable report catalog | uv + duckdb |
+| `warehouse.py` / `reports.py` / `reports/` | Warehouse store/ingest + the report catalog engine | (part of the `doctor` package) |
 | `context-doctor.md` | Agent instructions (< 50 lines) | None |
 
-> **Note:** the JSON summary now requires `python3` (stdlib only — no pip packages).
+> **Note:** the stdlib JSON summary requires only `python3` (no pip packages).
 > Parsing moved from line-based bash/awk into `doctor_core.py` so token counts are read from the
 > canonical `.message.usage.*` path (the old extractor double-counted via `usage.iterations[]`).
-> matplotlib/numpy remain optional, needed only for the visual chart.
+> matplotlib/numpy remain optional (visual chart); `uv`/`duckdb` are optional (warehouse).
+
+---
+
+## Warehouse (optional)
+
+The `doctor` CLI is a DuckDB-backed **metrics warehouse**: instead of re-parsing every JSONL on each run and emitting one fixed number, it **incrementally ingests** new sessions into a local store (`~/.claude/context-doctor/metrics.duckdb`) and serves a **catalog of named, parameterized reports** — distribution stats (median/p90), configurable bands, rolling averages, per-project rollups — all as JSON.
+
+```bash
+doctor reports                                              # list the report catalog
+doctor report summary --days 7                              # back-compat summary (same schema as analyze.sh)
+doctor report bands --dimension context_tokens --edges 50k,200k,400k
+doctor report rolling --metric total_tokens --window 20 --mode days
+doctor report <name> --sql                                 # print a report's SQL (copy/extend)
+doctor ingest                                               # manual refresh (reports auto-ingest first)
+```
+
+Available reports: `summary`, `bands`, `rolling`, `top-expensive`, `by-project`, `cache-health`, `daily`. Reports are the read interface — `doctor report <name>` runs one, `doctor reports` lists the catalog, `doctor report <name> --sql` prints its SQL, and `doctor ingest` refreshes the store.
+
+**Graceful degrade.** The warehouse is purely additive. `doctor report summary` emits the *same* JSON schema as `analyze.sh`, and the `/context-doctor` skill prefers `doctor` but falls back to the stdlib `analyze.sh` when `uv`/`duckdb` isn't present — so the summary always works, with or without the warehouse. Requires [`uv`](https://docs.astral.sh/uv) (`uv tool install` puts `doctor` on PATH and pulls `duckdb`).
 
 ---
 
@@ -75,6 +96,10 @@ bash ~/.claude/commands/context-doctor/analyze.sh 30
 
 # Visual chart (requires matplotlib)
 python3 ~/.claude/commands/context-doctor/analyze-visual.py 7
+
+# Warehouse reports (requires uv + duckdb)
+doctor report summary --days 7
+doctor report bands --dimension context_tokens --edges 50k,200k,400k
 ```
 
 ---
@@ -82,11 +107,19 @@ python3 ~/.claude/commands/context-doctor/analyze-visual.py 7
 ## Install
 
 ```bash
+# From a local clone — installs the skill + stdlib scripts AND, if uv is present,
+# puts the `doctor` warehouse CLI on PATH via `uv tool install` (best-effort; the
+# stdlib summary still works without uv/duckdb).
+./install.sh context-doctor
+
+# Remote (skill + stdlib scripts only; the warehouse needs the local package dir):
 curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote context-doctor
-# or manually
+
+# or fully manual
 mkdir -p ~/.claude/commands/context-doctor
 cp context-doctor.md ~/.claude/commands/context-doctor.md
 cp analyze.sh doctor_core.py analyze-visual.py ~/.claude/commands/context-doctor/
+uv tool install ./context-doctor    # optional: enables the `doctor` warehouse CLI
 ```
 
 ## Usage

@@ -42,6 +42,28 @@ uninstall_command() {
         rm -rf "$TARGET_DIR/$cmd_name"
     fi
     echo -e "${GREEN}[ OK ]${NC} $cmd_name — removed"
+
+    # context-doctor: symmetric with install — also remove the packaged `doctor`
+    # warehouse CLI if it was put on PATH via `uv tool install`. Best-effort: skip
+    # quietly if uv is absent or the tool was never installed (stdlib-only setup).
+    if [ "$cmd_name" = "context-doctor" ]; then
+        uninstall_doctor_tool
+    fi
+    return 0
+}
+
+# Best-effort removal of the packaged `doctor` CLI. Never fatal: a stdlib-only
+# install (no uv) has nothing to remove here.
+uninstall_doctor_tool() {
+    if ! command -v uv >/dev/null 2>&1; then
+        echo -e "${YELLOW}[SKIP]${NC}   doctor CLI — 'uv' not found on PATH (nothing to uninstall)."
+        return 0
+    fi
+    if uv tool uninstall context-doctor >/dev/null 2>&1; then
+        echo -e "${GREEN}[ OK ]${NC}   doctor CLI → removed via uv tool uninstall"
+    else
+        echo -e "${YELLOW}[SKIP]${NC}   doctor CLI — not installed via uv (nothing to uninstall)."
+    fi
     return 0
 }
 
