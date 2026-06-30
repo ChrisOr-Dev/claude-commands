@@ -373,6 +373,46 @@ def parse_events(path, start_offset=0, start_line_no=0):
             yield event
 
 
+def iter_turns_and_events(path, start_offset=0, start_line_no=0):
+    """Combined single-pass generator yielding tagged turn AND event items.
+
+    Walks :func:`_iter_lines` ONCE and ``json.loads`` each line ONCE, then yields
+    tagged tuples reusing the SAME extraction helpers as the standalone parsers
+    (no logic duplication):
+
+    * ``("turn", row_dict)`` — for each assistant record with usage (via
+      :func:`_row_for`); identical to what :func:`iter_session` yields.
+    * ``("event", event_dict)`` — for each projected event (via
+      :func:`_events_for`); a single assistant line may yield several.
+
+    This is the ingest backbone (warehouse slice 4): turns and events are
+    populated in one pass so each file is read/parsed once. :func:`iter_session`
+    and :func:`parse_events` stay as-is (their tests + standalone uses remain
+    valid); this is a sibling built on the same helpers.
+
+    On exhaustion, ``return``s ``(end_offset, end_line_no)`` — surfaced to the
+    caller as ``StopIteration.value``.
+    """
+    proj = project_for(path)
+    walker = _iter_lines(path, start_offset, start_line_no)
+    while True:
+        try:
+            line_no, line = next(walker)
+        except StopIteration as stop:
+            return stop.value
+        try:
+            rec = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(rec, dict):
+            continue
+        row = _row_for(rec, proj, path)
+        if row is not None:
+            yield ("turn", row)
+        for event in _events_for(rec, line_no):
+            yield ("event", event)
+
+
 def parse_session(path):
     """Parse one JSONL file into a list of per-turn dicts.
 

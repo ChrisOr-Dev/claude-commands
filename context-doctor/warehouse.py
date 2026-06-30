@@ -14,6 +14,7 @@ chunked through ``itertools.batched`` into ``executemany``; DuckDB is bounded by
 a conservative ``memory_limit`` and spills to a ``tmp/`` dir beside the DB.
 """
 
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -75,6 +76,15 @@ _TURNS_INSERT = (
     % (", ".join(_TURNS_COL_NAMES), ", ".join(["?"] * len(_TURNS_COL_NAMES)))
 )
 
+# `events` columns in INSERT order. `source_file` and `seq` are assigned at
+# ingest (not by the parser); the rest come from the event dict.
+_EVENTS_INSERT = (
+    "INSERT INTO events "
+    "(source_file, session_id, ts, seq, type, subtype, key, num, ref) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT (source_file, seq) DO NOTHING"
+)
+
 
 def schema_text():
     """Return the packaged schema.sql text."""
@@ -119,6 +129,43 @@ def _now_iso():
 def _ts_or_none(value):
     """ISO timestamp string, with "" -> None so DuckDB stores NULL."""
     return value if value else None
+
+
+def _event_key(value):
+    """Coerce an event ``key`` to the TEXT column. ``None``/``str`` pass through;
+    anything else (e.g. a ``queued_command`` ``prompt`` that is a content-block
+    list) is JSON-encoded so a non-string never reaches the TEXT column."""
+    if value is None or isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _event_num(value):
+    """Coerce an event ``num`` to the DOUBLE column. ``None`` stays; ``int``/
+    ``float`` -> ``float``; anything else (incl. ``bool`` guarded out) -> ``None``."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _event_row_tuple(source_file, seq, event):
+    """Map a parser event dict + ingest-assigned ``(source_file, seq)`` to the
+    ordered `events` value tuple, applying column-type coercions."""
+    return (
+        source_file,
+        event.get("session_id"),
+        _ts_or_none(event.get("ts")),
+        seq,
+        event.get("type"),
+        event.get("subtype"),
+        _event_key(event.get("key")),
+        _event_num(event.get("num")),
+        event.get("ref"),
+    )
 
 
 def connect(db_path=None, duckdb_mod=None):
@@ -209,22 +256,35 @@ def _turns_row_tuple(row):
     return tuple(out)
 
 
-def _ingest_file(conn, path, start_offset, start_line_no):
-    """Stream ``turns`` from one file starting at ``(start_offset, start_line_no)``.
+def _ingest_file(conn, path, start_offset, start_line_no, start_event_seq):
+    """Stream ``turns`` AND ``events`` from one file in a single pass.
 
-    Consumes ``iter_session`` through ``itertools.batched`` (peak memory = one
-    batch), ``executemany``-ing each batch. Returns
-    ``(inserted_attempted, skipped_no_uuid, end_offset, end_line_no)`` where
-    ``end_*`` come from the generator's StopIteration value."""
-    gen = doctor_core.iter_session(
+    Drives the combined ``iter_turns_and_events`` generator (the file is read +
+    parsed ONCE), routing ``"turn"`` items into the turns batch and ``"event"``
+    items into the events batch — both chunked through ``itertools.batched``
+    (peak memory = one batch). Each event is assigned a monotonic per-file
+    ``seq`` from a counter seeded at ``start_event_seq`` (0 for a fresh/rewritten
+    file; the stored ``last_event_seq`` on resume), so one assistant line's
+    multiple ``tool_use`` blocks get distinct seqs and a tail read continues the
+    ordinal without collision or gap.
+
+    Returns ``(turns_inserted, skipped_no_uuid, events_inserted, end_offset,
+    end_line_no, end_event_seq)``. ``end_*`` offset/line come from the
+    generator's StopIteration value; ``end_event_seq`` is the seq counter after
+    the file (i.e. the next free seq), which ``ingest`` stores as
+    ``last_event_seq``."""
+    gen = doctor_core.iter_turns_and_events(
         path, start_offset=start_offset, start_line_no=start_line_no)
-    inserted = 0
+    turns_inserted = 0
     skipped = 0
+    events_inserted = 0
     end_state = [start_offset, start_line_no]
+    # Mutable counter so the inner generator can advance it as events stream by.
+    seq_state = [start_event_seq]
 
-    def _rows():
-        # Drive the generator manually so its return value (end offset/line) is
-        # captured from StopIteration rather than lost.
+    def _drive():
+        # Drive the combined generator manually so its return value (end
+        # offset/line) is captured from StopIteration rather than lost.
         while True:
             try:
                 yield next(gen)
@@ -233,19 +293,47 @@ def _ingest_file(conn, path, start_offset, start_line_no):
                     end_state[0], end_state[1] = stop.value
                 return
 
-    for batch in batched(_rows(), BATCH_SIZE):
-        tuples = []
-        for row in batch:
-            t = _turns_row_tuple(row)
+    # Single walk: split the tagged stream into two batched sinks. We can't run
+    # two independent ``batched`` over one generator, so buffer per-tag up to
+    # BATCH_SIZE and flush each sink as it fills.
+    turn_buf = []
+    event_buf = []
+
+    def _flush_turns():
+        nonlocal turns_inserted
+        if turn_buf:
+            conn.executemany(_TURNS_INSERT, turn_buf)
+            turns_inserted += len(turn_buf)
+            turn_buf.clear()
+
+    def _flush_events():
+        nonlocal events_inserted
+        if event_buf:
+            conn.executemany(_EVENTS_INSERT, event_buf)
+            events_inserted += len(event_buf)
+            event_buf.clear()
+
+    for tag, item in _drive():
+        if tag == "turn":
+            t = _turns_row_tuple(item)
             if t is None:
                 skipped += 1
-                continue
-            tuples.append(t)
-        if tuples:
-            conn.executemany(_TURNS_INSERT, tuples)
-            inserted += len(tuples)
+            else:
+                turn_buf.append(t)
+                if len(turn_buf) >= BATCH_SIZE:
+                    _flush_turns()
+        else:  # "event"
+            seq = seq_state[0]
+            seq_state[0] = seq + 1
+            event_buf.append(_event_row_tuple(path, seq, item))
+            if len(event_buf) >= BATCH_SIZE:
+                _flush_events()
 
-    return inserted, skipped, end_state[0], end_state[1]
+    _flush_turns()
+    _flush_events()
+
+    return (turns_inserted, skipped, events_inserted,
+            end_state[0], end_state[1], seq_state[0])
 
 
 def _upsert_ingested_file(conn, path, mtime, size, last_offset, last_line_no,
@@ -279,14 +367,19 @@ def ingest(conn, source_dir=None):
     * shrank / rewritten / new (size < stored, or no row) -> DELETE the file's
       existing ``turns`` rows, then ingest from offset 0.
 
-    Events + ``last_event_seq`` are slice 4 — ``last_event_seq`` stays at its
-    prior value (0 for fresh rows). Returns a summary dict."""
+    ``events`` are populated in the SAME single pass as ``turns`` (slice 4):
+    each event gets a monotonic per-file ``seq`` (seeded from the stored
+    ``last_event_seq`` on resume, 0 on a fresh/rewritten file), inserted with an
+    ``ON CONFLICT (source_file, seq) DO NOTHING`` idempotency backstop; the seq
+    counter's end value is stored as ``last_event_seq`` (the next free seq).
+    Returns a summary dict (incl. ``events_inserted``)."""
     source = Path(source_dir) if source_dir is not None else DEFAULT_SOURCE
 
     files_scanned = 0
     files_ingested = 0
     files_skipped = 0
     turns_inserted = 0
+    events_inserted = 0
     rows_skipped_no_uuid = 0
 
     for fp in doctor_core.find_session_files(None, claude_dir=str(source)):
@@ -305,31 +398,38 @@ def ingest(conn, source_dir=None):
                 files_skipped += 1
                 continue
             if size > s_size:
-                # grew -> resume from the stored tail position.
+                # grew -> resume from the stored tail position; seed the seq
+                # counter from last_event_seq so tail events continue the
+                # ordinal without collision or gap.
                 start_offset, start_line_no = int(s_offset), int(s_line_no)
-                last_event_seq = s_event_seq if s_event_seq is not None else 0
+                start_event_seq = int(s_event_seq) if s_event_seq is not None else 0
             else:
-                # shrank / rewritten -> purge this file's rows, re-ingest from 0.
+                # shrank / rewritten -> purge this file's turns AND events,
+                # re-ingest from offset 0 with the seq counter reset to 0.
                 conn.execute("DELETE FROM turns WHERE source_file = ?", [fp])
+                conn.execute("DELETE FROM events WHERE source_file = ?", [fp])
                 start_offset, start_line_no = 0, 0
-                last_event_seq = 0
+                start_event_seq = 0
         else:
             start_offset, start_line_no = 0, 0
-            last_event_seq = 0
+            start_event_seq = 0
 
-        inserted, skipped, end_offset, end_line_no = _ingest_file(
-            conn, fp, start_offset, start_line_no)
+        (inserted, skipped, ev_inserted,
+         end_offset, end_line_no, end_event_seq) = _ingest_file(
+            conn, fp, start_offset, start_line_no, start_event_seq)
         turns_inserted += inserted
+        events_inserted += ev_inserted
         rows_skipped_no_uuid += skipped
         files_ingested += 1
 
         _upsert_ingested_file(
-            conn, fp, mtime, size, end_offset, end_line_no, last_event_seq)
+            conn, fp, mtime, size, end_offset, end_line_no, end_event_seq)
 
     return {
         "files_scanned": files_scanned,
         "files_ingested": files_ingested,
         "files_skipped": files_skipped,
         "turns_inserted": turns_inserted,
+        "events_inserted": events_inserted,
         "rows_skipped_no_uuid": rows_skipped_no_uuid,
     }

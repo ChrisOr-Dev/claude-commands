@@ -203,5 +203,220 @@ class TestMemoryPragmas(WarehouseTestBase):
         self.assertLessEqual(b, 1024 ** 3)
 
 
+# --- Slice 4: events ingest (combined single pass) -------------------------
+
+def _assistant_two_tools(uuid, sid="s1", ts="2026-06-28T00:00:00Z"):
+    """Assistant turn whose content carries TWO tool_use blocks (must get two
+    distinct event seqs) plus usage (so it also produces a turn row)."""
+    return {
+        "type": "assistant", "sessionId": sid, "timestamp": ts, "uuid": uuid,
+        "message": {
+            "model": "claude-opus-4-8",
+            "usage": {"input_tokens": 100, "output_tokens": 200,
+                      "cache_read_input_tokens": 300,
+                      "cache_creation_input_tokens": 400},
+            "content": [
+                {"type": "text", "text": "doing two things"},
+                {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}},
+                {"type": "tool_use", "name": "Read", "input": {"file": "x"}},
+            ],
+        },
+    }
+
+
+def _local_command(sid="s1", ts="2026-06-28T00:00:01Z"):
+    return {"type": "system", "subtype": "local_command", "sessionId": sid,
+            "timestamp": ts,
+            "content": "<command-name>/doctor</command-name> stdout"}
+
+
+def _queued_command(prompt, sid="s1", ts="2026-06-28T00:00:02Z"):
+    return {"type": "attachment", "sessionId": sid, "timestamp": ts,
+            "attachment": {"type": "queued_command", "prompt": prompt}}
+
+
+def _mode(value="plan", sid="s1", ts="2026-06-28T00:00:03Z"):
+    return {"type": "mode", "mode": value, "sessionId": sid, "timestamp": ts}
+
+
+def _permission_mode(value="acceptEdits", sid="s1", ts="2026-06-28T00:00:04Z"):
+    return {"type": "permission-mode", "permissionMode": value,
+            "sessionId": sid, "timestamp": ts}
+
+
+def _turn_duration(ms=1234, mc=5, sid="s1", ts="2026-06-28T00:00:05Z"):
+    return {"type": "system", "subtype": "turn_duration", "durationMs": ms,
+            "messageCount": mc, "sessionId": sid, "timestamp": ts}
+
+
+class EventsTestBase(WarehouseTestBase):
+    def _events(self, where=""):
+        conn = duckdb.connect(self.db)
+        try:
+            sql = ("SELECT source_file, seq, type, subtype, key, num, ref "
+                   "FROM events")
+            if where:
+                sql += " WHERE " + where
+            sql += " ORDER BY source_file, seq"
+            return conn.execute(sql).fetchall()
+        finally:
+            conn.close()
+
+    def _events_count(self):
+        conn = duckdb.connect(self.db)
+        try:
+            return conn.execute("SELECT count(*) FROM events").fetchone()[0]
+        finally:
+            conn.close()
+
+
+class TestEventsPopulatedAndSeq(EventsTestBase):
+    def test_events_match_projection_with_monotonic_unique_seq(self):
+        _write_lines(self.f1, [
+            _assistant_two_tools("u1"),     # 2 tool_use events
+            _local_command(),               # command/local_command
+            _queued_command("/plan now"),   # command/queued_command (str key)
+            _mode("plan"),                  # mode
+            _permission_mode("acceptEdits"),  # permission-mode
+            _turn_duration(1234, 5),        # system/turn_duration
+        ])
+        summary = self._ingest()
+        rows = self._events(
+            "source_file = '%s'" % self.f1.replace("'", "''"))
+
+        subtypes = [(t, st) for (_sf, _sq, t, st, _k, _n, _r) in rows]
+        self.assertEqual(subtypes, [
+            ("tool_use", "Bash"),
+            ("tool_use", "Read"),
+            ("command", "local_command"),
+            ("command", "queued_command"),
+            ("mode", None),
+            ("permission-mode", None),
+            ("system", "turn_duration"),
+        ])
+
+        seqs = [sq for (_sf, sq, *_rest) in rows]
+        self.assertEqual(seqs, list(range(len(rows))))         # 0..N-1
+        self.assertEqual(seqs, sorted(seqs))                    # monotonic
+        self.assertEqual(len(seqs), len(set(seqs)))             # unique
+        # The two tool_use blocks on ONE line got DISTINCT seqs.
+        self.assertEqual(seqs[0], 0)
+        self.assertEqual(seqs[1], 1)
+        self.assertNotEqual(seqs[0], seqs[1])
+
+        # turn_duration carried durationMs (num) and messageCount (key).
+        td = [r for r in rows if r[3] == "turn_duration"][0]
+        self.assertEqual(td[5], 1234.0)
+        self.assertEqual(td[4], "5")
+
+        self.assertEqual(summary["events_inserted"], len(rows))
+
+
+class TestCombinedPass(EventsTestBase):
+    def test_one_ingest_populates_both_turns_and_events(self):
+        _write_lines(self.f1, [
+            _assistant_two_tools("u1"),
+            _local_command(),
+        ])
+        summary = self._ingest()
+        self.assertEqual(summary["turns_inserted"], 1)
+        self.assertEqual(self._turns_count(), 1)
+        self.assertEqual(summary["events_inserted"], 3)  # 2 tool_use + 1 command
+        self.assertEqual(self._events_count(), 3)
+
+
+class TestEventsIdempotency(EventsTestBase):
+    def test_reingest_unchanged_adds_zero_events_and_turns(self):
+        _write_lines(self.f1, [
+            _assistant_two_tools("u1"),
+            _local_command(),
+            _mode("plan"),
+        ])
+        self._ingest()
+        turns_before = self._turns_count()
+        events_before = self._events_count()
+        summary2 = self._ingest()
+        self.assertEqual(summary2["turns_inserted"], 0)
+        self.assertEqual(summary2["events_inserted"], 0)
+        self.assertEqual(self._turns_count(), turns_before)
+        self.assertEqual(self._events_count(), events_before)
+
+
+class TestEventsIncrementalTail(EventsTestBase):
+    def test_appended_events_continue_seq_without_collision(self):
+        _write_lines(self.f1, [
+            _assistant_two_tools("u1"),   # seq 0,1
+            _local_command(),             # seq 2
+        ])
+        self._ingest()
+        self.assertEqual(self._events_count(), 3)
+        conn = duckdb.connect(self.db)
+        try:
+            stored_seq = conn.execute(
+                "SELECT last_event_seq FROM ingested_files WHERE path = ?",
+                [self.f1]).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(stored_seq, 3)  # next free seq
+
+        _append_lines(self.f1, [
+            _mode("acceptEdits"),         # seq 3
+            _turn_duration(99, 1),        # seq 4
+        ])
+        summary = self._ingest()
+        self.assertEqual(summary["events_inserted"], 2)
+        rows = self._events()
+        seqs = [sq for (_sf, sq, *_rest) in rows]
+        self.assertEqual(seqs, [0, 1, 2, 3, 4])  # continues, no collision/gap
+        self.assertEqual(len(seqs), len(set(seqs)))
+
+        conn = duckdb.connect(self.db)
+        try:
+            stored_seq2 = conn.execute(
+                "SELECT last_event_seq FROM ingested_files WHERE path = ?",
+                [self.f1]).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(stored_seq2, 5)  # advanced
+
+
+class TestEventsKeyCoercion(EventsTestBase):
+    def test_queued_command_list_prompt_stored_as_text(self):
+        # A queued_command whose `prompt` is a content-block LIST (not a str).
+        list_prompt = [{"type": "text", "text": "/plan"},
+                       {"type": "text", "text": "now"}]
+        _write_lines(self.f1, [_queued_command(list_prompt)])
+        summary = self._ingest()  # must not crash
+        self.assertEqual(summary["events_inserted"], 1)
+        rows = self._events()
+        self.assertEqual(len(rows), 1)
+        key = rows[0][4]
+        self.assertIsInstance(key, str)              # TEXT, not a crash
+        self.assertEqual(json.loads(key), list_prompt)  # round-trips
+
+
+class TestEventsShrinkRewrite(EventsTestBase):
+    def test_rewrite_smaller_purges_and_reseqs_from_zero(self):
+        _write_lines(self.f1, [
+            _assistant_two_tools("u1"),   # seq 0,1
+            _local_command(),             # seq 2
+            _mode("plan"),                # seq 3
+        ])
+        self._ingest()
+        self.assertEqual(self._events_count(), 4)
+
+        # Rewrite smaller with fresh content.
+        _write_lines(self.f1, [_local_command()])  # one event
+        summary = self._ingest()
+        self.assertEqual(summary["events_inserted"], 1)
+        rows = self._events()
+        self.assertEqual(len(rows), 1)
+        seqs = [sq for (_sf, sq, *_rest) in rows]
+        self.assertEqual(seqs, [0])                  # reset from 0
+        self.assertEqual(len(seqs), len(set(seqs)))  # no duplicate seq
+        self.assertEqual(rows[0][2], "command")
+        self.assertEqual(rows[0][3], "local_command")
+
+
 if __name__ == "__main__":
     unittest.main()
