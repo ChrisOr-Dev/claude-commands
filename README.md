@@ -2,6 +2,10 @@
 
 # Claude Commands
 
+[![npm version](https://img.shields.io/npm/v/claude-commands.svg)](https://www.npmjs.com/package/claude-commands)
+[![GitHub release](https://img.shields.io/github/v/release/ChrisOr-Dev/claude-commands)](https://github.com/ChrisOr-Dev/claude-commands/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A collection of optimized custom commands for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Install globally and use across all your projects.
 
 This is an open source project that collects useful Claude Code optimization techniques found across the internet, packages them into ready-to-use commands, and provides one-click installation. All credits go to the original authors.
@@ -192,10 +196,17 @@ claude-commands/
 ├── last-word/
 │   ├── last-word.md         <- command file
 │   └── README.md
-└── context-doctor/
-    ├── context-doctor.md    <- command file
-    ├── analyze.sh           <- standalone analysis script
-    ├── analyze-visual.py    <- optional chart generator
+├── context-doctor/
+│   ├── context-doctor.md    <- command file
+│   ├── analyze.sh           <- standalone analysis script
+│   ├── analyze-visual.py    <- optional chart generator
+│   └── README.md
+├── ping-claude/
+│   ├── ping-claude.md       <- command file
+│   ├── setup.sh             <- scheduler setup script
+│   └── README.md
+└── legislate/
+    ├── legislate.md         <- command file
     └── README.md
 ```
 

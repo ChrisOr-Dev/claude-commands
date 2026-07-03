@@ -2,6 +2,10 @@
 
 # Claude Commands
 
+[![npm version](https://img.shields.io/npm/v/claude-commands.svg)](https://www.npmjs.com/package/claude-commands)
+[![GitHub release](https://img.shields.io/github/v/release/ChrisOr-Dev/claude-commands)](https://github.com/ChrisOr-Dev/claude-commands/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 一組優化過的 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 自訂指令集合。全域安裝後可在所有專案中使用。
 
 這是一個開源項目，收集網路上實用的 Claude Code 優化技巧，整理為即用的指令，提供一鍵安裝。所有 credit 歸屬原作者。
@@ -192,10 +196,17 @@ claude-commands/
 ├── last-word/
 │   ├── last-word.md         <- 指令檔案
 │   └── README.md
-└── context-doctor/
-    ├── context-doctor.md    <- 指令檔案
-    ├── analyze.sh           <- 獨立分析腳本
-    ├── analyze-visual.py    <- 可選圖表產生器
+├── context-doctor/
+│   ├── context-doctor.md    <- 指令檔案
+│   ├── analyze.sh           <- 獨立分析腳本
+│   ├── analyze-visual.py    <- 可選圖表產生器
+│   └── README.md
+├── ping-claude/
+│   ├── ping-claude.md       <- 指令檔案
+│   ├── setup.sh             <- 排程設定腳本
+│   └── README.md
+└── legislate/
+    ├── legislate.md         <- 指令檔案
     └── README.md
 ```
 
