@@ -68,6 +68,7 @@ chmod +x install.sh
 | [`/last-word`](./last-word/) | 清空 context 前的收尾歸檔工具 | 靈感來自 [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
 | [`/context-doctor`](./context-doctor/) | Token 使用分析與優化建議 | 靈感來自 [RyanSeanPhillips](https://github.com/RyanSeanPhillips) |
 | [`/ping-claude`](./ping-claude/) | 每日 session 暖機排程，避免 5 小時 rate limit | 靈感來自 [@maigo.tom](https://www.threads.com/@maigo.tom) |
+| [`/legislate`](./legislate/) | 用一次強模型 session 把判斷力轉成給較弱模型用的 harness 規則 | 靈感來自 [@gyozalab](https://www.threads.com/@gyozalab) |
 
 ### 分開安裝指令
 
@@ -129,6 +130,25 @@ cp ping-claude/setup.sh ~/.claude/commands/ping-claude/
 在 Claude Code 中使用：`/ping-claude`
 
 [詳細說明 →](./ping-claude/)
+
+</details>
+
+<details>
+<summary><strong>/legislate</strong> — 把一次強模型 session 轉成長期沿用的 harness 規則</summary>
+
+在你能用的最強模型上執行，適用於之後會長期由較弱模型跑這個 harness 的情況。把判斷力轉成診斷報告、重寫過的根設定檔、模型調度協議、判斷力外化 rubric、派工模板、以及維護協議。
+
+```bash
+npx claude-commands legislate
+# 或
+curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote legislate
+# 或手動
+cp legislate/legislate.md ~/.claude/commands/legislate.md
+```
+
+在 Claude Code 中使用：`/legislate`
+
+[詳細說明 →](./legislate/)
 
 </details>
 

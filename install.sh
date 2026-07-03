@@ -15,7 +15,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # All available commands (add new commands here)
-ALL_COMMANDS=("last-word" "context-doctor" "ping-claude")
+ALL_COMMANDS=("last-word" "context-doctor" "ping-claude" "legislate")
 
 # Commands that have extra files (scripts) in a subdirectory
 # Format: "command-name:file1,file2,..."

@@ -1,21 +1,28 @@
 {
   "name": "claude-commands",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Optimized custom commands for Claude Code",
   "bin": {
-    "claude-commands": "./bin/cli.js"
+    "claude-commands": "bin/cli.js"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ChrisOr-Dev/claude-commands.git"
+    "url": "git+https://github.com/ChrisOr-Dev/claude-commands.git"
   },
-  "keywords": ["claude", "claude-code", "ai", "commands", "cli"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "commands",
+    "cli"
+  ],
   "license": "MIT",
   "files": [
     "bin/",
     "last-word/",
     "context-doctor/",
     "ping-claude/",
+    "legislate/",
     "install.sh",
     "uninstall.sh"
   ]

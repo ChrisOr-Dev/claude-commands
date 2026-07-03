@@ -68,6 +68,7 @@ chmod +x install.sh
 | [`/last-word`](./last-word/) | Session wrap-up & knowledge archival before clearing context | Inspired by [@chan_yu_chen](https://www.threads.com/@chan_yu_chen/post/DWBIYy3Eek3) |
 | [`/context-doctor`](./context-doctor/) | Token usage analysis with optimization recommendations | Inspired by [RyanSeanPhillips](https://github.com/RyanSeanPhillips) |
 | [`/ping-claude`](./ping-claude/) | Daily session warm-up scheduler to avoid 5-hour rate limits | Inspired by [@maigo.tom](https://www.threads.com/@maigo.tom) |
+| [`/legislate`](./legislate/) | Turn one strong-model session into durable harness rules for weaker models | Inspired by [@gyozalab](https://www.threads.com/@gyozalab) |
 
 ### Install Individual Commands
 
@@ -129,6 +130,25 @@ cp ping-claude/setup.sh ~/.claude/commands/ping-claude/
 Usage in Claude Code: `/ping-claude`
 
 [Read more →](./ping-claude/)
+
+</details>
+
+<details>
+<summary><strong>/legislate</strong> — Turn one strong-model session into durable harness rules</summary>
+
+Run on your most capable available model when a weaker model will run the harness long-term afterward. Converts judgment into a diagnosis, a rewritten root config, a model dispatch protocol, externalized judgment rubrics, delegation templates, and a maintenance protocol.
+
+```bash
+npx claude-commands legislate
+# or
+curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/install.sh | bash -s -- --remote legislate
+# or manually
+cp legislate/legislate.md ~/.claude/commands/legislate.md
+```
+
+Usage in Claude Code: `/legislate`
+
+[Read more →](./legislate/)
 
 </details>
 

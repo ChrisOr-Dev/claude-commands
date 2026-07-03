@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-ALL_COMMANDS=("last-word" "context-doctor" "ping-claude")
+ALL_COMMANDS=("last-word" "context-doctor" "ping-claude" "legislate")
 
 usage() {
     echo "Usage: uninstall.sh [OPTIONS] [COMMAND_NAME...]"
