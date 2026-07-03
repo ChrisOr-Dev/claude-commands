@@ -71,3 +71,5 @@ cp legislate/legislate.md ~/.claude/commands/legislate.md
 ## Credits
 
 靈感來自 [@gyozalab](https://www.threads.com/@gyozalab) 在 Threads 分享的一個技巧：把難得的高階模型 session 拿來「立法」而非執行任務，讓它的判斷力以檔案形式留給之後每一個 session。
+
+這個指令本身誕生於一次 Fable 5 session——也是這套技巧第一次真正被實戰執行。

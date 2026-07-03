@@ -93,3 +93,5 @@ Switch to your most capable available model, then in Claude Code type: `/legisla
 ## Credits
 
 Inspired by a technique shared by [@gyozalab](https://www.threads.com/@gyozalab) on Threads: using a rare high-tier model session to "legislate" rather than execute, so its judgment persists as files for every subsequent session.
+
+This command itself was born from a Fable 5 session — the first real-world run of the technique it now encodes.
