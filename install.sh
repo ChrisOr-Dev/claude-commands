@@ -20,7 +20,7 @@ ALL_COMMANDS=("last-word" "context-doctor" "ping-claude" "legislate")
 # Commands that have extra files (scripts) in a subdirectory
 # Format: "command-name:file1,file2,..."
 COMMAND_EXTRAS=(
-    "context-doctor:analyze.sh,analyze-visual.py"
+    "context-doctor:analyze.sh,analyze-visual.py,doctor_core.py"
     "ping-claude:setup.sh"
 )
 

@@ -17,17 +17,23 @@ The 1M context window removed the old auto-compaction at ~160K tokens. Sessions 
 **Token-efficient design:** Heavy analysis runs in standalone scripts (zero token cost). The Claude agent only reads a small JSON summary and gives recommendations.
 
 ```
-analyze.sh (pure bash)  ->  JSON summary  ->  agent interprets  ->  recommendations
-     zero tokens              ~500 bytes        minimal tokens
+analyze.sh -> doctor_core.py  ->  JSON summary  ->  agent interprets  ->  recommendations
+        zero tokens                 ~500 bytes        minimal tokens
 ```
 
 ### Components
 
 | File | Purpose | Dependencies |
 |------|---------|-------------|
-| `analyze.sh` | Core analysis — parses JSONL, outputs JSON | bash + awk (built-in) |
+| `analyze.sh` | Thin wrapper — runs the parser, outputs JSON | bash + python3 |
+| `doctor_core.py` | Core analysis — parses JSONL, aggregates tokens | python3 (stdlib only) |
 | `analyze-visual.py` | Optional chart generation | python3 + matplotlib + numpy |
 | `context-doctor.md` | Agent instructions (< 50 lines) | None |
+
+> **Note:** the JSON summary now requires `python3` (stdlib only — no pip packages).
+> Parsing moved from line-based bash/awk into `doctor_core.py` so token counts are read from the
+> canonical `.message.usage.*` path (the old extractor double-counted via `usage.iterations[]`).
+> matplotlib/numpy remain optional, needed only for the visual chart.
 
 ---
 
@@ -80,7 +86,7 @@ curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/in
 # or manually
 mkdir -p ~/.claude/commands/context-doctor
 cp context-doctor.md ~/.claude/commands/context-doctor.md
-cp analyze.sh analyze-visual.py ~/.claude/commands/context-doctor/
+cp analyze.sh doctor_core.py analyze-visual.py ~/.claude/commands/context-doctor/
 ```
 
 ## Usage
@@ -93,3 +99,4 @@ In Claude Code, type: `/context-doctor`
 
 - [RyanSeanPhillips](https://github.com/RyanSeanPhillips) — 1M context token burn analysis
 - [cldctrl](https://github.com/RyanSeanPhillips/cldctrl) — context_analysis.py
+- [@sdthach](https://github.com/sdthach) — diagnosed and fixed the `usage.iterations[]` double-counting bug ([#1](https://github.com/ChrisOr-Dev/claude-commands/issues/1))

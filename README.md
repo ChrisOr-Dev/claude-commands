@@ -107,7 +107,7 @@ curl -fsSL https://raw.githubusercontent.com/ChrisOr-Dev/claude-commands/main/in
 # or manually
 mkdir -p ~/.claude/commands/context-doctor
 cp context-doctor/context-doctor.md ~/.claude/commands/context-doctor.md
-cp context-doctor/analyze.sh context-doctor/analyze-visual.py ~/.claude/commands/context-doctor/
+cp context-doctor/analyze.sh context-doctor/doctor_core.py context-doctor/analyze-visual.py ~/.claude/commands/context-doctor/
 ```
 
 Usage in Claude Code: `/context-doctor`
